@@ -1,7 +1,7 @@
 import streamlit as st
 
 from services.registry import ServiceRegistry
-from ui.state import init_session_state
+from ui.layout import render_app
 
 
 def build_services() -> ServiceRegistry:
@@ -17,23 +17,8 @@ def build_services() -> ServiceRegistry:
 def main() -> None:
     st.set_page_config(page_title="Chess", layout="wide")
 
-    services = build_services()
-    init_session_state()
-
-    st.title("Chess Application")
-    st.write("Base layout ready for engine, UI, and services wiring.")
-
-    st.subheader("Services")
-    if services.names():
-        st.write({name: str(service) for name, service in services.items()})
-    else:
-        st.write("No services registered yet.")
-
-    st.subheader("Session State")
-    st.json({
-        "game": st.session_state.get("game"),
-        "preferences": st.session_state.get("preferences"),
-    })
+    build_services()
+    render_app()
 
 
 if __name__ == "__main__":
