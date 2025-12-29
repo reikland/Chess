@@ -25,6 +25,7 @@ def init_session_state() -> None:
             "show_move_hints": True,
             "mode": "Humain vs Humain",
             "ai_depth": 2,
+            "ai_color": "Noir",
             "timer_minutes": 10,
         }
 

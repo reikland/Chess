@@ -21,6 +21,11 @@ def render_sidebar() -> None:
         ["Humain vs Humain", "Humain vs IA"],
         index=0 if preferences.get("mode") == "Humain vs Humain" else 1,
     )
+    preferences["ai_color"] = st.sidebar.selectbox(
+        "Couleur de l'IA",
+        ["Blanc", "Noir"],
+        index=0 if preferences.get("ai_color") == "Blanc" else 1,
+    )
     preferences["theme"] = st.sidebar.selectbox(
         "Thème",
         ["Classique", "Sombre"],
@@ -45,6 +50,9 @@ def render_sidebar() -> None:
     )
 
     st.sidebar.divider()
+    last_ai_move = st.session_state.get("last_ai_move")
+    if last_ai_move:
+        st.sidebar.caption(f"Coup de l'IA : {last_ai_move}")
     st.sidebar.caption("Choisissez un thème et un mode pour personnaliser votre partie.")
 
 

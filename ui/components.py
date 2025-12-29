@@ -7,6 +7,9 @@ from typing import Iterable, Sequence
 import chess
 import streamlit as st
 
+from chess_engine.ai import choose_move
+from chess_engine.board import Board, Move as EngineMove, Piece
+
 
 def _piece_symbol(piece: chess.Piece | None) -> str:
     if piece is None:
@@ -107,8 +110,16 @@ def on_square_click(square: str) -> None:
         _push_message("Destination invalide pour la pièce sélectionnée.", "⚠️")
         return
 
+    _record_move(move, _current_player(board), is_ai=False)
+    if st.session_state["preferences"].get("mode") == "Humain vs IA":
+        apply_ai_move()
+
+
+def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
+    game = st.session_state["game"]
+    board: chess.Board = game["board"]
+
     san = board.san(move)
-    player = _current_player(board)
     board.push(move)
     game["history"].append({
         "joueur": player,
@@ -117,12 +128,83 @@ def on_square_click(square: str) -> None:
         "numero": len(game["history"]) + 1,
     })
     game["undone_moves"] = []
-    game["last_move"] = (
-        chess.square_name(move.from_square),
-        chess.square_name(move.to_square),
-    )
+    _update_last_move(game)
     game["selected_square"] = None
     game["legal_moves"] = []
+    if is_ai:
+        st.session_state["last_ai_move"] = san
+        _push_message(f"L'IA joue {san}", "🤖")
+
+
+def _engine_board_from_python(board: chess.Board) -> Board:
+    engine_board = Board(setup=False)
+    engine_board.castling_rights = (
+        board.has_kingside_castling_rights(chess.WHITE),
+        board.has_queenside_castling_rights(chess.WHITE),
+        board.has_kingside_castling_rights(chess.BLACK),
+        board.has_queenside_castling_rights(chess.BLACK),
+    )
+    engine_board.en_passant_target = (
+        Board.algebraic_to_square(chess.square_name(board.ep_square))
+        if board.ep_square is not None
+        else None
+    )
+
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if not piece:
+            continue
+        color = "white" if piece.color == chess.WHITE else "black"
+        engine_board.set_piece(
+            Board.algebraic_to_square(chess.square_name(square)),
+            Piece(piece.symbol().upper(), color),
+        )
+    return engine_board
+
+
+def _convert_engine_move(engine_move: EngineMove) -> chess.Move:
+    uci = (
+        Board.square_to_algebraic(engine_move.start)
+        + Board.square_to_algebraic(engine_move.end)
+    )
+    if engine_move.promotion:
+        uci += engine_move.promotion.lower()
+    return chess.Move.from_uci(uci)
+
+
+def _ai_color(preferences: dict) -> chess.Color:
+    return chess.WHITE if preferences.get("ai_color") == "Blanc" else chess.BLACK
+
+
+def apply_ai_move() -> None:
+    preferences = st.session_state["preferences"]
+    if preferences.get("mode") != "Humain vs IA":
+        return
+
+    game = st.session_state["game"]
+    board: chess.Board = game["board"]
+    ai_color = _ai_color(preferences)
+
+    if board.turn != ai_color:
+        _push_message("Ce n'est pas au tour de l'IA de jouer.", "ℹ️")
+        return
+
+    if board.is_game_over():
+        _push_message("La partie est terminée, l'IA ne peut pas jouer.", "⚠️")
+        return
+
+    engine_board = _engine_board_from_python(board)
+    engine_move = choose_move(
+        engine_board,
+        preferences.get("ai_depth", 2),
+        "white" if ai_color == chess.WHITE else "black",
+    )
+    if engine_move is None:
+        _push_message("Aucun coup disponible pour l'IA.", "⚠️")
+        return
+
+    move = _convert_engine_move(engine_move)
+    _record_move(move, f"IA ({preferences.get('ai_color')})", is_ai=True)
 
 
 def render_board() -> None:
@@ -176,6 +258,7 @@ def undo_move() -> None:
 
     move = board.pop()
     game["undone_moves"].append(move)
+    st.session_state["last_ai_move"] = None
     if game["history"]:
         game["history"].pop()
     _update_last_move(game)
@@ -205,6 +288,7 @@ def redo_move() -> None:
         chess.square_name(move.from_square),
         chess.square_name(move.to_square),
     )
+    st.session_state["last_ai_move"] = None
     game["selected_square"] = None
     game["legal_moves"] = []
     _push_message("Coup rejoué.", "↪️")
@@ -215,6 +299,8 @@ def render_move_controls() -> None:
     col1, col2 = st.columns(2)
     col1.button("Annuler", on_click=undo_move, use_container_width=True)
     col2.button("Refaire", on_click=redo_move, use_container_width=True)
+    if st.session_state["preferences"].get("mode") == "Humain vs IA":
+        st.button("Jouer pour l'IA", on_click=apply_ai_move, use_container_width=True)
     st.caption("Sélectionnez une pièce puis une destination pour jouer un coup.")
 
 
@@ -223,3 +309,5 @@ def render_status_bar() -> None:
     current_player = _current_player(board)
     status = "Échec" if board.is_check() else "Tour"
     st.info(f"{status} : {current_player}")
+    if st.session_state.get("last_ai_move"):
+        st.caption(f"Dernier coup IA : {st.session_state['last_ai_move']}")
