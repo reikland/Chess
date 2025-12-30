@@ -29,7 +29,10 @@ class EvaluationConfig:
     minor_centralization_bonus: float = 0.03
     development_bonus: float = 0.08
     early_castle_bonus: float = 0.25
-    early_queen_penalty: float = 0.08
+    early_queen_penalty: float = 0.12
+    early_queen_distance_penalty: float = 0.02
+    central_pawn_advance_bonus: float = 0.04
+    minor_development_target_bonus: float = 0.05
 
 
 CONFIG = EvaluationConfig()
@@ -332,6 +335,18 @@ _START_MINOR_SQUARES = {
     "black": {(0, 1), (0, 6), (0, 2), (0, 5)},
 }
 _CASTLED_KING_SQUARES = {(7, 6), (7, 2), (0, 6), (0, 2)}
+_CENTRAL_FILES = {3, 4}
+_MINOR_TARGETS_WHITE = {
+    (5, 2),  # Nc3
+    (5, 5),  # Nf3
+    (5, 3),  # Nd3
+    (5, 4),  # Ne3
+    (4, 2),  # Bc4
+    (4, 5),  # Bf4
+    (4, 3),  # Bd4
+    (4, 4),  # Be4
+}
+_MINOR_TARGETS_BLACK = {(7 - r, c) for (r, c) in _MINOR_TARGETS_WHITE}
 
 
 def _development_and_castling(board: Board) -> Tuple[float, float]:
@@ -343,19 +358,42 @@ def _development_and_castling(board: Board) -> Tuple[float, float]:
     mid_score = 0.0
     for color in ("white", "black"):
         sign = 1.0 if color == "white" else -1.0
+        start_row = 6 if color == "white" else 1
+        central_targets = _MINOR_TARGETS_WHITE if color == "white" else _MINOR_TARGETS_BLACK
+
         for square in _START_MINOR_SQUARES[color]:
             piece = board.get_piece(square)
             if not piece or piece.color != color or piece.kind not in {"N", "B"}:
                 mid_score += sign * CONFIG.development_bonus * opening_weight
+
+        for piece, r, c in board.iter_pieces():
+            if piece.color != color:
+                continue
+            if piece.kind in {"N", "B"} and (r, c) in central_targets:
+                mid_score += sign * CONFIG.minor_development_target_bonus * opening_weight
+            if piece.kind == "P" and c in _CENTRAL_FILES:
+                advancement = (start_row - r) if color == "white" else (r - start_row)
+                if advancement > 0:
+                    mid_score += sign * advancement * CONFIG.central_pawn_advance_bonus * opening_weight
 
         king_pos = board._king_position(color)
         if king_pos in _CASTLED_KING_SQUARES:
             mid_score += sign * CONFIG.early_castle_bonus * opening_weight
 
         queen_home = (7, 3) if color == "white" else (0, 3)
-        queen_piece = board.get_piece(queen_home)
-        if queen_piece is None or queen_piece.kind != "Q" or queen_piece.color != color:
+        queen_pos = None
+        for piece, r, c in board.iter_pieces():
+            if piece.kind == "Q" and piece.color == color:
+                queen_pos = (r, c)
+                break
+
+        if queen_pos is None:
             mid_score -= sign * CONFIG.early_queen_penalty * opening_weight
+        else:
+            distance = abs(queen_home[0] - queen_pos[0]) + abs(queen_home[1] - queen_pos[1])
+            if distance > 0:
+                penalty = CONFIG.early_queen_penalty + (distance * CONFIG.early_queen_distance_penalty)
+                mid_score -= sign * penalty * opening_weight
 
     # Development matters mostly in the opening; taper off for late phases.
     return mid_score, mid_score * 0.3
