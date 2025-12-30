@@ -41,6 +41,15 @@ def render_sidebar() -> None:
         value=int(preferences.get("ai_depth", 2)),
         disabled=preferences.get("mode") != "Humain vs IA",
     )
+    preferences["ai_max_nodes"] = st.sidebar.number_input(
+        "Noeuds maximum (IA)",
+        min_value=100,
+        max_value=200000,
+        step=100,
+        value=int(preferences.get("ai_max_nodes", 5000)),
+        help="Limite dure sur le nombre de noeuds explorés par l'IA (pour accélérer la réponse).",
+        disabled=preferences.get("mode") != "Humain vs IA",
+    )
     preferences["timer_minutes"] = st.sidebar.number_input(
         "Temps par joueur (minutes)",
         min_value=1,

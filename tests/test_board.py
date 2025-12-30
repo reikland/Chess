@@ -59,3 +59,12 @@ def test_pawn_promotion(promotion_piece):
     promoted_piece = board.get_piece(Board.algebraic_to_square("a8"))
     assert promoted_piece.kind == promotion_piece
     assert promoted_piece.color == "white"
+
+
+def test_missing_king_counts_as_check():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (False, False, False, False)
+    board.set_piece(Board.algebraic_to_square("e8"), Piece("K", "black"))
+
+    assert board.in_check("white")

@@ -17,6 +17,7 @@ def _init_preferences() -> None:
             "show_move_hints": True,
             "mode": "Humain vs Humain",
             "ai_depth": 2,
+            "ai_max_nodes": 5000,
             "ai_color": "Noir",
             "timer_minutes": 10,
             "show_clock": True,

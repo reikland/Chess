@@ -38,6 +38,7 @@ class ChessApp:
         self.mode_var = tk.StringVar(value="Humain vs Humain")
         self.ai_color_var = tk.StringVar(value="Noir")
         self.ai_depth_var = tk.IntVar(value=2)
+        self.ai_nodes_var = tk.IntVar(value=5000)
 
         self.status_var = tk.StringVar(value=self._status_text())
 
@@ -75,6 +76,25 @@ class ChessApp:
         )
         color_combo.grid(row=0, column=5, padx=5)
         color_combo.bind("<<ComboboxSelected>>", lambda _: self.reset_game())
+
+        ttk.Label(top, text="Profondeur IA :").grid(row=0, column=6, padx=5)
+        ttk.Spinbox(
+            top,
+            from_=1,
+            to=6,
+            textvariable=self.ai_depth_var,
+            width=5,
+        ).grid(row=0, column=7, padx=5)
+
+        ttk.Label(top, text="Noeuds max :").grid(row=0, column=8, padx=5)
+        ttk.Spinbox(
+            top,
+            from_=100,
+            to=100000,
+            increment=100,
+            textvariable=self.ai_nodes_var,
+            width=8,
+        ).grid(row=0, column=9, padx=5)
 
         self.status_label = ttk.Label(
             top, textvariable=self.status_var, font=("Arial", 12)
@@ -188,7 +208,10 @@ class ChessApp:
             return
 
         move = choose_move(
-            self.game.board, self.ai_depth_var.get(), color=self._ai_color()
+            self.game.board,
+            self.ai_depth_var.get(),
+            color=self._ai_color(),
+            max_nodes=self.ai_nodes_var.get(),
         )
         if move is None:
             self.status_var.set("Aucun coup disponible pour l'IA.")
@@ -234,11 +257,24 @@ class ChessApp:
                 piece = self.game.board.get_piece((r, c))
                 if piece:
                     symbol = PIECE_UNICODE[(piece.color, piece.kind)]
+                    fill_color = "#111111" if piece.color == "black" else "#f6f6f6"
+                    shadow_color = "#f6f6f6" if piece.color == "black" else "#111111"
+                    cx = x1 + self.square_size / 2
+                    cy = y1 + self.square_size / 2
+                    # Shadow to increase contrast on all backgrounds
                     self.canvas.create_text(
-                        x1 + self.square_size / 2,
-                        y1 + self.square_size / 2,
+                        cx + 1,
+                        cy + 1,
                         text=symbol,
-                        font=("Arial", 36),
+                        font=("Arial", 36, "bold"),
+                        fill=shadow_color,
+                    )
+                    self.canvas.create_text(
+                        cx,
+                        cy,
+                        text=symbol,
+                        font=("Arial", 36, "bold"),
+                        fill=fill_color,
                     )
 
 
