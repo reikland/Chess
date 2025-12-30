@@ -27,6 +27,9 @@ class EvaluationConfig:
     isolated_pawn_penalty: float = 0.15
     passed_pawn_bonus: float = 0.3
     minor_centralization_bonus: float = 0.03
+    development_bonus: float = 0.08
+    early_castle_bonus: float = 0.25
+    early_queen_penalty: float = 0.08
 
 
 CONFIG = EvaluationConfig()
@@ -311,6 +314,40 @@ def _outpost_squares(board: Board) -> Tuple[float, float]:
     return mid_score, end_score
 
 
+_START_MINOR_SQUARES = {
+    "white": {(7, 1), (7, 6), (7, 2), (7, 5)},
+    "black": {(0, 1), (0, 6), (0, 2), (0, 5)},
+}
+_CASTLED_KING_SQUARES = {(7, 6), (7, 2), (0, 6), (0, 2)}
+
+
+def _development_and_castling(board: Board) -> Tuple[float, float]:
+    phase = _game_phase(board)
+    opening_weight = max(0.0, 1.0 - phase)
+    if opening_weight == 0:
+        return 0.0, 0.0
+
+    mid_score = 0.0
+    for color in ("white", "black"):
+        sign = 1.0 if color == "white" else -1.0
+        for square in _START_MINOR_SQUARES[color]:
+            piece = board.get_piece(square)
+            if not piece or piece.color != color or piece.kind not in {"N", "B"}:
+                mid_score += sign * CONFIG.development_bonus * opening_weight
+
+        king_pos = board._king_position(color)
+        if king_pos in _CASTLED_KING_SQUARES:
+            mid_score += sign * CONFIG.early_castle_bonus * opening_weight
+
+        queen_home = (7, 3) if color == "white" else (0, 3)
+        queen_piece = board.get_piece(queen_home)
+        if queen_piece is None or queen_piece.kind != "Q" or queen_piece.color != color:
+            mid_score -= sign * CONFIG.early_queen_penalty * opening_weight
+
+    # Development matters mostly in the opening; taper off for late phases.
+    return mid_score, mid_score * 0.3
+
+
 def evaluate_board(board: Board) -> float:
     phase = _game_phase(board)
     mid_score, end_score = _material_and_position(board)
@@ -319,9 +356,26 @@ def evaluate_board(board: Board) -> float:
     minor_activity = _minor_centralization(board)
     mobility_mid, mobility_end = _mobility(board)
     outpost_mid, outpost_end = _outpost_squares(board)
+    dev_mid, dev_end = _development_and_castling(board)
 
-    mid_total = mid_score + king_mid + pawn_score + minor_activity + mobility_mid + outpost_mid
-    end_total = end_score + king_end + pawn_score + minor_activity + mobility_end + outpost_end
+    mid_total = (
+        mid_score
+        + king_mid
+        + pawn_score
+        + minor_activity
+        + mobility_mid
+        + outpost_mid
+        + dev_mid
+    )
+    end_total = (
+        end_score
+        + king_end
+        + pawn_score
+        + minor_activity
+        + mobility_end
+        + outpost_end
+        + dev_end
+    )
 
     return _interpolate(mid_total, end_total, phase)
 

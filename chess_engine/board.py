@@ -653,6 +653,16 @@ class BitboardBoard:
         if setup:
             self._setup_standard()
 
+    @classmethod
+    def from_board(cls, board: Board) -> "BitboardBoard":
+        clone = cls(setup=False)
+        clone.castling_rights = board.castling_rights
+        clone.en_passant_square = board.en_passant_square
+        clone.halfmove_clock = board.halfmove_clock
+        for piece, r, c in board.iter_pieces():
+            clone.set_piece((r, c), Piece(piece.kind, piece.color))
+        return clone
+
     @staticmethod
     def in_bounds(square: Square) -> bool:
         return _in_bounds(square)
