@@ -201,7 +201,7 @@ class ChessApp:
         if self.mode_var.get() != "Humain vs IA":
             return
 
-        if self.game.game_status() != "ongoing":
+        if self.game.is_over():
             return
 
         if self.game.turn != self._ai_color():

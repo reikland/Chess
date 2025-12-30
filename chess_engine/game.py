@@ -64,6 +64,11 @@ class Game:
             return False
         return len(self.board.generate_legal_moves(target)) == 0
 
+    def is_over(self) -> bool:
+        """Return True when the current player has no legal moves."""
+
+        return self.is_checkmate(self.turn) or self.is_stalemate(self.turn)
+
     def game_status(self) -> str:
         if self.is_checkmate(self.turn):
             return f"{self.turn} in checkmate"
