@@ -133,7 +133,7 @@ def _promotion_label(promotion: int | None) -> str:
         chess.BISHOP: "Fou",
         chess.KNIGHT: "Cavalier",
     }
-    return labels.get(promotion, "Dame")
+    return labels.get(promotion, "Choix invalide")
 
 
 def _is_game_over(board: chess.Board) -> bool:
@@ -389,8 +389,15 @@ def _render_promotion_prompt() -> None:
     preferences = st.session_state["preferences"]
     board: chess.Board = game["board"]
 
-    st.warning("Promotion : choisissez la pièce souhaitée.")
     option_keys = list(options.keys())
+    stored_choice = st.session_state.get("promotion_choice")
+    invalid_stored_choice = stored_choice is not None and stored_choice not in option_keys
+    if invalid_stored_choice:
+        st.error("Choix de promotion invalide. Sélectionnez une pièce disponible.")
+        st.session_state["promotion_choice"] = None
+        _push_message("Sélection invalide : choisissez une pièce de promotion.", "⚠️")
+
+    st.warning("Promotion : choisissez la pièce souhaitée.")
     selection = st.radio(
         "Pièce de promotion",
         options=option_keys,
@@ -400,6 +407,9 @@ def _render_promotion_prompt() -> None:
         if st.session_state.get("promotion_choice") in option_keys
         else None,
     )
+
+    if selection not in option_keys:
+        selection = None
 
     if selection is not None:
         st.caption(f"Pièce sélectionnée : {_promotion_label(selection)}")
