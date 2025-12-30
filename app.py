@@ -45,7 +45,7 @@ class ChessApp:
         self.ai_color_var = tk.StringVar(value="Noir")
         self.ai_depth_var = tk.IntVar(value=2)
         self.ai_nodes_var = tk.IntVar(value=5000)
-        self.ai_time_limit_var = tk.IntVar(value=1500)
+        self.ai_time_limit_var = tk.IntVar(value=2)
 
         self.status_var = tk.StringVar(value=self._status_text())
 
@@ -96,30 +96,24 @@ class ChessApp:
             width=5,
         ).grid(row=0, column=7, padx=5)
 
-        ttk.Label(
-            top,
-            text="Limite de temps IA (ms, pour garder l'interface réactive) :",
-        ).grid(row=0, column=8, padx=5)
+        ttk.Label(top, text="s/coup :").grid(row=0, column=8, padx=5)
         ttk.Spinbox(
             top,
             from_=0,
-            to=10000,
-            increment=100,
+            to=30,
+            increment=1,
             textvariable=self.ai_time_limit_var,
-            width=8,
+            width=6,
         ).grid(row=0, column=9, padx=5)
 
-        ttk.Label(
-            top,
-            text="Noeuds max (cap dur, réduit la réflexion) :",
-        ).grid(row=0, column=10, padx=5)
+        ttk.Label(top, text="Noeuds max :").grid(row=0, column=10, padx=5)
         ttk.Spinbox(
             top,
             from_=0,
             to=100000,
             increment=100,
             textvariable=self.ai_nodes_var,
-            width=8,
+            width=10,
         ).grid(row=0, column=11, padx=5)
 
         self.status_label = ttk.Label(
@@ -282,9 +276,16 @@ class ChessApp:
         self.root.update_idletasks()
 
         max_nodes = self.ai_nodes_var.get()
+        time_limit_s = self.ai_time_limit_var.get()
+
         max_nodes = max_nodes if max_nodes > 0 else None
-        time_limit_ms = self.ai_time_limit_var.get()
-        time_limit_ms = time_limit_ms if time_limit_ms > 0 else None
+        time_limit_ms = (time_limit_s * 1000) if time_limit_s > 0 else None
+
+        if max_nodes and time_limit_ms:
+            if time_limit_s >= max_nodes:
+                max_nodes = None
+            else:
+                time_limit_ms = None
 
         move = choose_move(
             self.game.board,
