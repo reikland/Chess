@@ -83,6 +83,16 @@ def _color_label(board_turn: chess.Color) -> str:
     return "white" if board_turn == chess.WHITE else "black"
 
 
+def _promotion_label(promotion: int | None) -> str:
+    labels = {
+        chess.QUEEN: "Dame",
+        chess.ROOK: "Tour",
+        chess.BISHOP: "Fou",
+        chess.KNIGHT: "Cavalier",
+    }
+    return labels.get(promotion, "Dame")
+
+
 def _announce_board_state(board: chess.Board, player: str) -> None:
     """Push toast messages reflecting the latest board state."""
 
@@ -125,6 +135,10 @@ def on_square_click(square: str) -> None:
     game = st.session_state["game"]
     board: chess.Board = game["board"]
 
+    if game.get("pending_promotion"):
+        _push_message("Choisissez d'abord la pièce de promotion en attente.", "⚠️")
+        return
+
     selected_square: str | None = game.get("selected_square")
     legal_moves: list[chess.Move] = game.get("legal_moves", [])
 
@@ -160,6 +174,22 @@ def on_square_click(square: str) -> None:
         _push_message("Coup illégal : destination invalide.", "⚠️")
         return
 
+    promotion_moves = [
+        item
+        for item in legal_moves
+        if item.from_square == move.from_square
+        and item.to_square == move.to_square
+        and item.promotion
+    ]
+    if promotion_moves:
+        game["pending_promotion"] = {
+            "moves": promotion_moves,
+            "from": selected_square,
+            "to": square,
+        }
+        _push_message("Choisissez la pièce de promotion désirée.", "♕")
+        return
+
     _record_move(move, _current_player(board), is_ai=False)
     if st.session_state["preferences"].get("mode") == "Humain vs IA":
         apply_ai_move()
@@ -181,6 +211,8 @@ def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
     _update_last_move(game)
     game["selected_square"] = None
     game["legal_moves"] = []
+    game["pending_promotion"] = None
+    st.session_state.pop("promotion_choice", None)
     if is_ai:
         st.session_state["last_ai_move"] = san
         _push_message(f"L'IA joue {san}", "🤖")
@@ -189,11 +221,52 @@ def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
     _announce_board_state(board, player)
 
 
+def _render_promotion_prompt() -> None:
+    game = st.session_state["game"]
+    pending = game.get("pending_promotion")
+    if not pending:
+        return
+
+    promotion_moves: list[chess.Move] = pending.get("moves", [])
+    if not promotion_moves:
+        game["pending_promotion"] = None
+        return
+
+    options = {move.promotion: move for move in promotion_moves}
+    preferences = st.session_state["preferences"]
+    board: chess.Board = game["board"]
+
+    st.warning("Promotion : choisissez la pièce souhaitée.")
+    selection = st.radio(
+        "Pièce de promotion",
+        options=list(options.keys()),
+        format_func=_promotion_label,
+        key="promotion_choice",
+    )
+
+    confirm_col, cancel_col = st.columns(2)
+    if confirm_col.button("Valider la promotion", use_container_width=True):
+        chosen_move = options.get(selection)
+        if chosen_move:
+            _record_move(chosen_move, _current_player(board), is_ai=False)
+            if preferences.get("mode") == "Humain vs IA":
+                apply_ai_move()
+        return
+
+    if cancel_col.button("Annuler", use_container_width=True):
+        game["pending_promotion"] = None
+        game["selected_square"] = None
+        game["legal_moves"] = []
+        st.session_state.pop("promotion_choice", None)
+        _push_message("Promotion annulée. Reprenez la sélection.", "↩️")
+
+
 def _load_game_state(game_state: dict) -> None:
     st.session_state["game"] = {
         **game_state,
         "selected_square": None,
         "legal_moves": [],
+        "pending_promotion": None,
     }
     _update_last_move(st.session_state["game"])
     st.session_state["last_ai_move"] = None
@@ -321,6 +394,8 @@ def render_board() -> None:
     if preferences.get("show_move_hints", True) and legal_moves:
         moves_text = ", ".join(move.uci() for move in legal_moves)
         st.caption(f"Coups légaux depuis la sélection : {moves_text}")
+
+    _render_promotion_prompt()
 
 
 def render_move_history() -> None:
