@@ -120,10 +120,10 @@ def apply_theme(theme_name: str) -> None:
             justify-content: center;
             font-weight: 700;
             font-size: 14px;
-            color: var(--accent-color);
-            background: rgba(0, 0, 0, 0.06);
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.35);
             border-radius: 10px;
-            border: 1px solid rgba(0,0,0,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
         }}
 
         .chessboard .file-label {{

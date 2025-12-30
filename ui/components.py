@@ -529,6 +529,14 @@ def render_board() -> None:
         unsafe_allow_html=True,
     )
     with board_container.form("board_form"):
+        file_columns_top = st.columns(9, gap="small")
+        file_columns_top[0].markdown(
+            "<div class='board-label file-label' aria-label='Coin vide' aria-hidden='true'>&nbsp;</div>",
+            unsafe_allow_html=True,
+        )
+        for file_idx in range(8):
+            _render_file_label(file_columns_top[file_idx + 1], file_idx)
+
         for rank in reversed(range(8)):
             cols = st.columns(9, gap="small")
             _render_rank_label(cols[0], rank)
@@ -553,13 +561,6 @@ def render_board() -> None:
                     disabled=game_over,
                 ):
                     on_square_click(name)
-        file_columns = st.columns(9, gap="small")
-        file_columns[0].markdown(
-            "<div class='board-label file-label' aria-label='Coin vide' aria-hidden='true'>&nbsp;</div>",
-            unsafe_allow_html=True,
-        )
-        for file_idx in range(8):
-            _render_file_label(file_columns[file_idx + 1], file_idx)
     board_container.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
