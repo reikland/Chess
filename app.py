@@ -154,22 +154,25 @@ class ChessApp:
             return f"{turn} est en échec."
         return status
 
-    def _choose_promotion(self, color: str) -> str:
-        """Prompt the user for a promotion piece, defaulting to queen."""
+    def _choose_promotion(self, color: str) -> str | None:
+        """Prompt the user for a promotion piece.
+
+        Returning ``None`` when the input is invalid allows the caller to abort the
+        move so the player can retry without forcing an unintended promotion.
+        """
 
         choices = {"Dame": "Q", "Tour": "R", "Fou": "B", "Cavalier": "N"}
-        prompt = "Choisissez la pièce de promotion (Dame par défaut) :"
         selection = simpledialog.askstring(
             "Promotion",
-            prompt,
+            "Choisissez la pièce de promotion :",
             parent=self.root,
             initialvalue="Dame",
         )
 
         if selection:
             selection = selection.strip().capitalize()
-        # Fallback to queen if the input is missing or invalid
-        return choices.get(selection, "Q")
+
+        return choices.get(selection)
 
     def on_click(self, event: tk.Event) -> None:
         row = (event.y - self.margin_top) // self.square_size
@@ -211,6 +214,12 @@ class ChessApp:
                 moving_piece.color == "black" and end[0] == 7
             ):
                 promotion = self._choose_promotion(moving_piece.color)
+                if promotion is None:
+                    self.status_var.set(
+                        "Promotion annulée : entrée invalide. Choisissez une pièce."
+                    )
+                    self.draw_board()
+                    return
 
         human_played = False
         move_refused = False
@@ -330,31 +339,28 @@ class ChessApp:
         # loop to catch up with the updated board state.
         self.canvas.update_idletasks()
 
-        label_shadow = "#f6f6f6"
-        label_fill = "#111111"
+        label_shadow = "#111111"
+        label_fill = "#f6f6f6"
         label_offset = 1
         file_labels = ["a", "b", "c", "d", "e", "f", "g", "h"]
         for r in range(8):
             rank = 8 - r
             cy = origin_y + r * self.square_size + self.square_size / 2
-            for x in (
-                origin_x - self.margin_x / 2,
-                origin_x + self.square_size * 8 + self.margin_x / 2,
-            ):
-                self.canvas.create_text(
-                    x + label_offset,
-                    cy + label_offset,
-                    text=str(rank),
-                    font=("Arial", 14, "bold"),
-                    fill=label_shadow,
-                )
-                self.canvas.create_text(
-                    x,
-                    cy,
-                    text=str(rank),
-                    font=("Arial", 14, "bold"),
-                    fill=label_fill,
-                )
+            x = origin_x - self.margin_x / 2
+            self.canvas.create_text(
+                x + label_offset,
+                cy + label_offset,
+                text=str(rank),
+                font=("Arial", 14, "bold"),
+                fill=label_shadow,
+            )
+            self.canvas.create_text(
+                x,
+                cy,
+                text=str(rank),
+                font=("Arial", 14, "bold"),
+                fill=label_fill,
+            )
 
         letter_y = origin_y + self.square_size * 8 + 16
         for c, file_letter in enumerate(file_labels):
