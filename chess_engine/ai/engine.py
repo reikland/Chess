@@ -17,6 +17,8 @@ from chess_engine.transposition import (
     zobrist_hash,
 )
 
+QUIESCENCE_DEPTH = 4
+
 
 def _mobility_score(board: Board) -> float:
     white_moves = len(board.generate_legal_moves("white"))
@@ -83,11 +85,16 @@ def _quiescence(
     maximizing_color: Color,
     alpha: float,
     beta: float,
+    q_depth: int,
     max_nodes: Optional[int],
     node_counter: dict[str, int],
     transposition_table: Optional[TranspositionTable],
 ) -> float:
-    """Extend leaf searches by only exploring forcing moves (captures/checks)."""
+    """Extend leaf searches by exploring forcing moves (captures, promotions, checks).
+
+    ``q_depth`` limits how far the quiescence search can extend to avoid
+    exponential blowups in tactical positions.
+    """
 
     node_counter["count"] += 1
     if max_nodes is not None and node_counter["count"] > max_nodes:
@@ -101,11 +108,14 @@ def _quiescence(
     stand_pat = evaluate_board(board)
     stand_pat = stand_pat if maximizing_color == "white" else -stand_pat
 
+    if q_depth <= 0:
+        return stand_pat
+
     tt_entry: Optional[TTEntry] = None
     tt_key: Optional[int] = None
     if transposition_table:
         tt_key = zobrist_hash(board, current_color)
-        tt_entry = tt_probe(transposition_table, tt_key, 0, alpha, beta)
+        tt_entry = tt_probe(transposition_table, tt_key, q_depth, alpha, beta)
         if tt_entry:
             return tt_entry.score
 
@@ -126,7 +136,7 @@ def _quiescence(
 
     noisy_moves: list[Move] = []
     for move in board.generate_legal_moves(current_color):
-        if _captured_piece(board, move):
+        if _captured_piece(board, move) or move.promotion:
             noisy_moves.append(move)
             continue
         board.apply_move(move)
@@ -146,6 +156,7 @@ def _quiescence(
             maximizing_color,
             alpha,
             beta,
+            q_depth - 1,
             max_nodes,
             node_counter,
             transposition_table,
@@ -168,7 +179,7 @@ def _quiescence(
             flag = UPPERBOUND
         elif value >= beta_original:
             flag = LOWERBOUND
-        tt_store(transposition_table, tt_key, 0, value, flag, best_move=None)
+        tt_store(transposition_table, tt_key, q_depth, value, flag, best_move=None)
 
     return value
 
@@ -201,6 +212,7 @@ def _minimax(
             maximizing_color,
             alpha,
             beta,
+            QUIESCENCE_DEPTH,
             max_nodes,
             node_counter,
             transposition_table,

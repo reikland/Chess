@@ -26,6 +26,7 @@ class EvaluationConfig:
     doubled_pawn_penalty: float = 0.2
     isolated_pawn_penalty: float = 0.15
     passed_pawn_bonus: float = 0.3
+    minor_centralization_bonus: float = 0.03
 
 
 CONFIG = EvaluationConfig()
@@ -227,14 +228,28 @@ def pawn_structure(board: Board) -> float:
     return score
 
 
+def _minor_centralization(board: Board) -> float:
+    score = 0.0
+    for r in range(8):
+        for c in range(8):
+            piece = board.board[r][c]
+            if piece is None or piece.kind not in {"N", "B"}:
+                continue
+            distance = abs(3.5 - r) + abs(3.5 - c)
+            centralization = (3.5 - distance) * CONFIG.minor_centralization_bonus
+            score += centralization if piece.color == "white" else -centralization
+    return score
+
+
 def evaluate_board(board: Board) -> float:
     phase = _game_phase(board)
     mid_score, end_score = _material_and_position(board)
     king_mid, king_end = king_safety(board)
     pawn_score = pawn_structure(board)
+    minor_activity = _minor_centralization(board)
 
-    mid_total = mid_score + king_mid + pawn_score
-    end_total = end_score + king_end + pawn_score
+    mid_total = mid_score + king_mid + pawn_score + minor_activity
+    end_total = end_score + king_end + pawn_score + minor_activity
 
     return (phase * mid_total) + ((1 - phase) * end_total)
 
