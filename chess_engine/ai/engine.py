@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 from chess_engine.board import Board, Color, Move, Piece
 from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
@@ -22,9 +22,35 @@ from chess_engine.transposition import (
 QUIESCENCE_DEPTH = 4
 
 
-def _mobility_score(board: Board) -> float:
-    white_moves = len(board.generate_legal_moves("white"))
-    black_moves = len(board.generate_legal_moves("black"))
+MobilityCounts = Optional[Dict[Color, Union[int, Iterable[Move]]]]
+
+
+def _pseudo_legal_move_count(board: Board, color: Color) -> int:
+    count = 0
+    for r in range(8):
+        for c in range(8):
+            piece = board.board[r][c]
+            if piece and piece.color == color:
+                count += len(board._generate_pseudo_moves_for_piece((r, c), piece))
+    return count
+
+
+def _mobility_score(board: Board, mobility_counts: MobilityCounts = None) -> float:
+    mobility_counts = mobility_counts or {}
+
+    def _resolve(value: Union[int, Iterable[Move], None]) -> Optional[int]:
+        if value is None:
+            return None
+        return value if isinstance(value, int) else len(value)
+
+    white_moves = _resolve(mobility_counts.get("white"))
+    black_moves = _resolve(mobility_counts.get("black"))
+
+    if white_moves is None:
+        white_moves = _pseudo_legal_move_count(board, "white")
+    if black_moves is None:
+        black_moves = _pseudo_legal_move_count(board, "black")
+
     return 0.1 * (white_moves - black_moves)
 
 
@@ -66,14 +92,20 @@ def _move_order_score(
     )
 
 
-def evaluate_board(board: Board) -> float:
+def evaluate_board(board: Board, mobility_counts: MobilityCounts = None) -> float:
     """Evaluate the board using tapered material/positional features and mobility."""
 
-    return _static_evaluation(board) + _mobility_score(board)
+    return _static_evaluation(board) + _mobility_score(board, mobility_counts)
 
 
-def _terminal_score(board: Board, player: Color, maximizing_color: Color) -> Optional[float]:
-    legal_moves = board.generate_legal_moves(player)
+def _terminal_score(
+    board: Board,
+    player: Color,
+    maximizing_color: Color,
+    legal_moves: Optional[list[Move]] = None,
+) -> Optional[float]:
+    if legal_moves is None:
+        legal_moves = board.generate_legal_moves(player)
     if legal_moves:
         return None
     if board.in_check(player):
@@ -108,11 +140,15 @@ def _quiescence(
         base_score = evaluate_board(board)
         return base_score if maximizing_color == "white" else -base_score
 
-    terminal = _terminal_score(board, current_color, maximizing_color)
+    legal_moves = board.generate_legal_moves(current_color)
+    terminal = _terminal_score(
+        board, current_color, maximizing_color, legal_moves=legal_moves
+    )
     if terminal is not None:
         return terminal
 
-    stand_pat = evaluate_board(board)
+    mobility_counts = {current_color: len(legal_moves)}
+    stand_pat = evaluate_board(board, mobility_counts)
     stand_pat = stand_pat if maximizing_color == "white" else -stand_pat
 
     if q_depth <= 0:
@@ -142,7 +178,7 @@ def _quiescence(
     next_color: Color = "black" if current_color == "white" else "white"
 
     noisy_moves: list[Move] = []
-    for move in board.generate_legal_moves(current_color):
+    for move in legal_moves:
         if _captured_piece(board, move) or move.promotion:
             noisy_moves.append(move)
             continue
@@ -215,7 +251,10 @@ def _minimax(
         base_score = evaluate_board(board)
         return base_score if maximizing_color == "white" else -base_score
 
-    terminal = _terminal_score(board, current_color, maximizing_color)
+    legal_moves = board.generate_legal_moves(current_color)
+    terminal = _terminal_score(
+        board, current_color, maximizing_color, legal_moves=legal_moves
+    )
     if terminal is not None:
         return terminal
     if depth == 0:
@@ -233,7 +272,7 @@ def _minimax(
         )
 
     legal_moves = sorted(
-        board.generate_legal_moves(current_color),
+        legal_moves,
         key=lambda move: _move_order_score(
             board,
             move,
