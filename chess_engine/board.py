@@ -8,6 +8,10 @@ PieceType = str  # K, Q, R, B, N, P
 Square = Tuple[int, int]
 
 
+def _square_from_index(idx: int) -> Square:
+    return divmod(idx, 8)
+
+
 def _square_index(square: Square) -> int:
     r, c = square
     return r * 8 + c
@@ -611,3 +615,227 @@ class Board:
         castling = self._castling_rights_fen()
         en_passant = self.square_to_algebraic(self.en_passant_square) if self.en_passant_square else "-"
         return f"{placement} {active_color} {castling} {en_passant}"
+
+    def iter_pieces(self):
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece:
+                    yield piece, r, c
+
+    def file_pieces(self, file_index: int):
+        for r in range(8):
+            piece = self.board[r][file_index]
+            if piece:
+                yield piece, r
+
+
+def _iter_bits(bitboard: int):
+    while bitboard:
+        lsb = bitboard & -bitboard
+        yield lsb.bit_length() - 1
+        bitboard ^= lsb
+
+
+class BitboardBoard:
+    files = Board.files
+
+    def __init__(self, setup: bool = True) -> None:
+        self.piece_bitboards: Dict[Color, Dict[PieceType, int]] = {}
+        self.occupancy = 0
+        self.pieces_by_index: List[Optional[Piece]] = [None] * 64
+        self.king_positions: Dict[Color, Optional[Square]] = {"white": None, "black": None}
+        self.castling_rights = (True, True, True, True) if setup else (False, False, False, False)
+        self.en_passant_square: Optional[Square] = None
+        self.history: List[MoveState] = []
+        self.halfmove_clock = 0
+        self.clear()
+        if setup:
+            self._setup_standard()
+
+    @staticmethod
+    def in_bounds(square: Square) -> bool:
+        return _in_bounds(square)
+
+    @classmethod
+    def algebraic_to_square(cls, name: str) -> Square:
+        return Board.algebraic_to_square(name)
+
+    @classmethod
+    def square_to_algebraic(cls, square: Square) -> str:
+        return Board.square_to_algebraic(square)
+
+    def clear(self) -> None:
+        self.piece_bitboards = {
+            "white": {"P": 0, "N": 0, "B": 0, "R": 0, "Q": 0, "K": 0},
+            "black": {"P": 0, "N": 0, "B": 0, "R": 0, "Q": 0, "K": 0},
+        }
+        self.occupancy = 0
+        self.pieces_by_index = [None] * 64
+        self.king_positions = {"white": None, "black": None}
+        self.en_passant_square = None
+        self.history.clear()
+        self.halfmove_clock = 0
+
+    def _place_piece(self, square: Square, piece: Piece) -> None:
+        idx = _square_index(square)
+        bit = _bit(square)
+        self.piece_bitboards[piece.color][piece.kind] |= bit
+        self.occupancy |= bit
+        self.pieces_by_index[idx] = piece
+        if piece.kind == "K":
+            self.king_positions[piece.color] = square
+
+    def _remove_piece(self, square: Square, piece: Piece) -> None:
+        idx = _square_index(square)
+        bit = _bit(square)
+        self.piece_bitboards[piece.color][piece.kind] &= ~bit
+        self.occupancy &= ~bit
+        self.pieces_by_index[idx] = None
+        if piece.kind == "K" and self.king_positions.get(piece.color) == square:
+            self.king_positions[piece.color] = None
+
+    def _setup_standard(self) -> None:
+        pieces = "RNBQKBNR"
+        for c, k in enumerate(pieces):
+            self._place_piece((7, c), Piece(k, "white"))
+            self._place_piece((0, c), Piece(k, "black"))
+        for c in range(8):
+            self._place_piece((6, c), Piece("P", "white"))
+            self._place_piece((1, c), Piece("P", "black"))
+
+    def get_piece(self, square: Square) -> Optional[Piece]:
+        return self.pieces_by_index[_square_index(square)]
+
+    def set_piece(self, square: Square, piece: Optional[Piece]) -> None:
+        existing = self.get_piece(square)
+        if existing:
+            self._remove_piece(square, existing)
+        if piece:
+            self._place_piece(square, piece)
+
+    def _ally(self, piece: Piece, color: Color) -> bool:
+        return piece.color == color
+
+    def _enemy(self, piece: Piece, color: Color) -> bool:
+        return piece.color != color
+
+    def _board_state(self) -> BoardState:
+        copies = {color: {k: v for k, v in kinds.items()} for color, kinds in self.piece_bitboards.items()}
+        pieces_copy = list(self.pieces_by_index)
+        king_positions = dict(self.king_positions)
+        return BoardState(copies, self.occupancy, pieces_copy, king_positions)
+
+    def _king_position(self, color: Color) -> Optional[Square]:
+        return self.king_positions.get(color)
+
+    def _castling_path_is_safe(self, color: Color, kingside: bool) -> bool:
+        return Board._castling_path_is_safe(self, color, kingside)
+
+    def _sliding_attack(self, square_idx: int, by_color: Color, state: BoardState) -> bool:
+        return Board._sliding_attack(self, square_idx, by_color, state)
+
+    def is_square_attacked(self, square: Square, by_color: Color, state: Optional[BoardState] = None) -> bool:
+        return Board.is_square_attacked(self, square, by_color, state)
+
+    def in_check(self, color: Color, state: Optional[BoardState] = None) -> bool:
+        return Board.in_check(self, color, state)
+
+    def _generate_pseudo_moves_for_piece(self, position: Square, piece: Piece) -> List[Move]:
+        return Board._generate_pseudo_moves_for_piece(self, position, piece)
+
+    def _update_castling_rights_after_move(self, move: Move, moved_piece: Piece, captured: Optional[Piece]) -> Tuple[bool, bool, bool, bool]:
+        return Board._update_castling_rights_after_move(self, move, moved_piece, captured)
+
+    def _resolve_en_passant_capture(self, move: Move, moved_piece: Piece) -> Optional[Piece]:
+        return Board._resolve_en_passant_capture(self, move, moved_piece)
+
+    def _move_puts_self_in_check(self, move: Move, color: Color) -> bool:
+        return Board._move_puts_self_in_check(self, move, color)
+
+    def apply_move(self, move: Move) -> MoveState:
+        return Board.apply_move(self, move)
+
+    def undo(self) -> Optional[MoveState]:
+        return Board.undo(self)
+
+    def is_fifty_move_draw(self) -> bool:
+        return Board.is_fifty_move_draw(self)
+
+    def generate_legal_moves(self, color: Color) -> List[Move]:
+        moves: List[Move] = []
+        state = self._board_state()
+        for kind, bb in state.piece_bitboards[color].items():
+            for idx in _iter_bits(bb):
+                square = _square_from_index(idx)
+                piece = self.get_piece(square)
+                if not piece:
+                    continue
+                for move in self._generate_pseudo_moves_for_piece(square, piece):
+                    if not self._move_puts_self_in_check(move, color):
+                        moves.append(move)
+        return moves
+
+    def iter_pieces(self):
+        for per_piece in self.piece_bitboards.values():
+            for kind, bb in per_piece.items():
+                for idx in _iter_bits(bb):
+                    piece = self.pieces_by_index[idx]
+                    if piece:
+                        r, c = _square_from_index(idx)
+                        yield piece, r, c
+
+    def file_pieces(self, file_index: int):
+        mask = 0
+        for rank in range(8):
+            mask |= 1 << (rank * 8 + file_index)
+        for per_piece in self.piece_bitboards.values():
+            for bb in per_piece.values():
+                hits = bb & mask
+                for idx in _iter_bits(hits):
+                    piece = self.pieces_by_index[idx]
+                    if piece:
+                        yield piece, _square_from_index(idx)[0]
+
+    def _castling_rights_fen(self) -> str:
+        return Board._castling_rights_fen(self)
+
+    def position_key(self, turn: Color) -> str:
+        rows = []
+        for r in range(8):
+            empty = 0
+            row_parts: List[str] = []
+            for c in range(8):
+                piece = self.get_piece((r, c))
+                if piece:
+                    if empty:
+                        row_parts.append(str(empty))
+                        empty = 0
+                    symbol = piece.kind if piece.color == "white" else piece.kind.lower()
+                    row_parts.append(symbol)
+                else:
+                    empty += 1
+            if empty:
+                row_parts.append(str(empty))
+            rows.append("".join(row_parts))
+        placement = "/".join(rows)
+        active_color = "w" if turn == "white" else "b"
+        castling = self._castling_rights_fen()
+        en_passant = self.square_to_algebraic(self.en_passant_square) if self.en_passant_square else "-"
+        return f"{placement} {active_color} {castling} {en_passant}"
+
+    def __str__(self) -> str:
+        rows = []
+        for r in range(8):
+            row = []
+            for c in range(8):
+                piece = self.get_piece((r, c))
+                if not piece:
+                    row.append(".")
+                else:
+                    symbol = piece.kind
+                    if piece.color == "black":
+                        symbol = symbol.lower()
+                    row.append(symbol)
+            rows.append(" ".join(row))
+        return "\n".join(rows)
