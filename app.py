@@ -297,6 +297,11 @@ class ChessApp:
                         fill=fill_color,
                     )
 
+        # Force a canvas refresh so that special pawn moves such as en-passant
+        # immediately reflect on screen instead of waiting for the Tk event
+        # loop to catch up with the updated board state.
+        self.canvas.update_idletasks()
+
 
 def main() -> None:
     root = tk.Tk()
