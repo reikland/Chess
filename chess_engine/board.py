@@ -465,3 +465,47 @@ class Board:
                     row.append(symbol)
             rows.append(" ".join(row))
         return "\n".join(rows)
+
+    def _castling_rights_fen(self) -> str:
+        wk, wq, bk, bq = self.castling_rights
+        parts = []
+        if wk:
+            parts.append("K")
+        if wq:
+            parts.append("Q")
+        if bk:
+            parts.append("k")
+        if bq:
+            parts.append("q")
+        return "".join(parts) or "-"
+
+    def position_key(self, turn: Color) -> str:
+        """Serialize the current position into a lightweight FEN-like string.
+
+        The returned string contains, in order, the piece placement, the active
+        color, castling rights, and the en passant square if available. The
+        halfmove clock is intentionally omitted for repetition detection.
+        """
+
+        rows = []
+        for r in range(8):
+            empty = 0
+            row_parts: List[str] = []
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece:
+                    if empty:
+                        row_parts.append(str(empty))
+                        empty = 0
+                    symbol = piece.kind if piece.color == "white" else piece.kind.lower()
+                    row_parts.append(symbol)
+                else:
+                    empty += 1
+            if empty:
+                row_parts.append(str(empty))
+            rows.append("".join(row_parts))
+        placement = "/".join(rows)
+        active_color = "w" if turn == "white" else "b"
+        castling = self._castling_rights_fen()
+        en_passant = self.square_to_algebraic(self.en_passant_square) if self.en_passant_square else "-"
+        return f"{placement} {active_color} {castling} {en_passant}"

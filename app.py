@@ -145,6 +145,8 @@ class ChessApp:
             return "Pat. Partie nulle."
         if status == "draw by fifty-move rule":
             return "Partie nulle par règle des 50 coups."
+        if status == "draw by repetition":
+            return "Partie nulle par répétition."
         if "check" in status:
             return f"{turn} est en échec."
         return status
