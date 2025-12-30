@@ -79,6 +79,39 @@ def apply_theme(theme_name: str) -> None:
         .stCaption {{
             color: var(--muted-color);
         }}
+
+        /* Chessboard styling */
+        .chessboard {{
+            padding: 10px;
+            border-radius: 16px;
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.04), transparent 40%),
+                        var(--panel-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+            border: 1px solid rgba(0,0,0,0.08);
+        }}
+
+        .chessboard .stForm > div {{
+            gap: 4px !important;
+        }}
+
+        .chessboard .stButton>button {{
+            height: 72px;
+            font-size: 30px;
+            font-weight: 600;
+            border-radius: 10px;
+            border: none;
+            transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+        }}
+
+        .chessboard .stButton>button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }}
+
+        .chessboard .stButton>button:focus-visible {{
+            outline: 3px solid var(--accent-color);
+            filter: brightness(1.05);
+        }}
     </style>
     """
 
