@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Tuple
 
+from chess_engine.ai import choose_move
 from chess_engine.board import Board
 from chess_engine.game import Game
 
@@ -34,6 +35,10 @@ class ChessApp:
         self.selected: Optional[Square] = None
         self.last_move: Optional[Tuple[Square, Square]] = None
 
+        self.mode_var = tk.StringVar(value="Humain vs Humain")
+        self.ai_color_var = tk.StringVar(value="Noir")
+        self.ai_depth_var = tk.IntVar(value=2)
+
         self.status_var = tk.StringVar(value=self._status_text())
 
         self._build_ui()
@@ -49,8 +54,32 @@ class ChessApp:
         btn_undo = ttk.Button(top, text="Annuler", command=self.undo_move)
         btn_undo.grid(row=0, column=1, padx=5)
 
-        self.status_label = ttk.Label(top, textvariable=self.status_var, font=("Arial", 12))
-        self.status_label.grid(row=0, column=2, padx=10)
+        ttk.Label(top, text="Mode :").grid(row=0, column=2, padx=5)
+        mode_combo = ttk.Combobox(
+            top,
+            textvariable=self.mode_var,
+            state="readonly",
+            values=["Humain vs Humain", "Humain vs IA"],
+            width=18,
+        )
+        mode_combo.grid(row=0, column=3, padx=5)
+        mode_combo.bind("<<ComboboxSelected>>", lambda _: self.reset_game())
+
+        ttk.Label(top, text="Couleur IA :").grid(row=0, column=4, padx=5)
+        color_combo = ttk.Combobox(
+            top,
+            textvariable=self.ai_color_var,
+            state="readonly",
+            values=["Blanc", "Noir"],
+            width=8,
+        )
+        color_combo.grid(row=0, column=5, padx=5)
+        color_combo.bind("<<ComboboxSelected>>", lambda _: self.reset_game())
+
+        self.status_label = ttk.Label(
+            top, textvariable=self.status_var, font=("Arial", 12)
+        )
+        self.status_label.grid(row=1, column=0, columnspan=6, pady=5)
 
         self.canvas = tk.Canvas(
             self.root,
@@ -67,6 +96,8 @@ class ChessApp:
         self.last_move = None
         self.status_var.set(self._status_text())
         self.draw_board()
+        if self.mode_var.get() == "Humain vs IA" and self.ai_color_var.get() == "Blanc":
+            self.root.after(50, self.play_ai_move)
 
     def undo_move(self) -> None:
         self.game.undo()
@@ -129,14 +160,51 @@ class ChessApp:
             ):
                 promotion = "Q"
 
+        human_played = False
         try:
             move = self.game.make_move(start_alg, end_alg, promotion=promotion)
             self.last_move = (move.start, move.end)
             self.status_var.set(self._status_text())
+            human_played = True
         except ValueError:
             self.status_var.set("Coup illégal. Réessayez.")
         finally:
             self.selected = None
+            self.draw_board()
+            if human_played and self.mode_var.get() == "Humain vs IA":
+                self.root.after(50, self.play_ai_move)
+
+    def _ai_color(self) -> str:
+        return "white" if self.ai_color_var.get() == "Blanc" else "black"
+
+    def play_ai_move(self) -> None:
+        if self.mode_var.get() != "Humain vs IA":
+            return
+
+        if self.game.game_status() != "ongoing":
+            return
+
+        if self.game.turn != self._ai_color():
+            return
+
+        move = choose_move(
+            self.game.board, self.ai_depth_var.get(), color=self._ai_color()
+        )
+        if move is None:
+            self.status_var.set("Aucun coup disponible pour l'IA.")
+            return
+
+        promotion = move.promotion
+        start_alg = Board.square_to_algebraic(move.start)
+        end_alg = Board.square_to_algebraic(move.end)
+
+        try:
+            applied = self.game.make_move(start_alg, end_alg, promotion=promotion)
+            self.last_move = (applied.start, applied.end)
+            self.status_var.set(self._status_text())
+        except ValueError:
+            self.status_var.set("L'IA a proposé un coup invalide.")
+        finally:
             self.draw_board()
 
     def draw_board(self) -> None:
