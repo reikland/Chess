@@ -76,7 +76,7 @@ def test_fifty_move_rule_detection():
 
     assert game.board.halfmove_clock == 100
     assert game.is_fifty_move_draw()
-    assert game.game_status() == "draw by fifty-move rule"
+    assert game.game_status() == "partie nulle par règle des 50 coups"
 
 
 def test_threefold_repetition_detection():
@@ -97,5 +97,5 @@ def test_threefold_repetition_detection():
         game.make_move(start, end)
 
     assert game.is_threefold_repetition()
-    assert game.game_status() == "draw by repetition"
+    assert game.game_status() == "partie nulle par répétition"
     assert game.is_over()

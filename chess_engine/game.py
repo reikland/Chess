@@ -112,9 +112,9 @@ class Game:
         if self.is_stalemate(self.turn):
             return "stalemate"
         if self.is_fifty_move_draw():
-            return "draw by fifty-move rule"
+            return "partie nulle par règle des 50 coups"
         if self.is_threefold_repetition():
-            return "draw by repetition"
+            return "partie nulle par répétition"
         if self.in_check(self.turn):
             return f"{self.turn} in check"
         return "ongoing"
