@@ -112,6 +112,16 @@ def apply_theme(theme_name: str) -> None:
             outline: 3px solid var(--accent-color);
             filter: brightness(1.05);
         }}
+
+        .chessboard .board-label {{
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--muted-color);
+            border-radius: 10px;
+        }}
     </style>
     """
 
