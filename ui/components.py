@@ -282,21 +282,40 @@ def render_board() -> None:
     last_move_squares = set(game.get("last_move", []) or [])
 
     st.subheader("Plateau")
-    for rank in reversed(range(8)):
-        cols = st.columns(8)
-        for file_idx in range(8):
-            square = chess.square(file_idx, rank)
-            name = chess.square_name(square)
-            piece = board.piece_at(square)
-            label = _square_label(
-                name,
-                piece,
-                selected_square,
-                legal_targets,
-                last_move_squares,
-            )
-            if cols[file_idx].button(label, key=f"square-{name}", use_container_width=True):
-                on_square_click(name)
+    board_container = st.container()
+    board_container.markdown(
+        "<div class='chessboard' aria-label='Plateau d'échecs'>",
+        unsafe_allow_html=True,
+    )
+    with board_container.form("board_form"):
+        for rank in reversed(range(8)):
+            cols = st.columns(8, gap="small")
+            for file_idx in range(8):
+                square = chess.square(file_idx, rank)
+                name = chess.square_name(square)
+                piece = board.piece_at(square)
+                label = _square_label(
+                    name,
+                    piece,
+                    selected_square,
+                    legal_targets,
+                    last_move_squares,
+                )
+                is_light = (rank + file_idx) % 2 == 0
+                button_type = "primary" if is_light else "secondary"
+                if cols[file_idx].form_submit_button(
+                    label,
+                    key=f"square-{name}",
+                    use_container_width=True,
+                    type=button_type,
+                ):
+                    on_square_click(name)
+    board_container.markdown("</div>", unsafe_allow_html=True)
+
+    st.caption(
+        "Cliquez une fois sur une pièce, puis sur la case de destination."
+        " Cliquez à nouveau sur la même case pour annuler la sélection."
+    )
 
     if preferences.get("show_move_hints", True) and legal_moves:
         moves_text = ", ".join(move.uci() for move in legal_moves)
