@@ -156,7 +156,7 @@ def choose_move(
             node_counter,
         )
         board.undo()
-        if score > best_score:
+        if best_move is None or score > best_score:
             best_score = score
             best_move = move
 

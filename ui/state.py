@@ -36,6 +36,7 @@ def _init_game() -> None:
             "selected_square": None,
             "legal_moves": [],
             "last_move": None,
+            "pending_promotion": None,
         }
 
 
