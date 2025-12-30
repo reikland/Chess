@@ -101,7 +101,7 @@ class Board:
 
     def is_square_attacked(self, square: Square, by_color: Color) -> bool:
         r, c = square
-        direction = -1 if by_color == "white" else 1
+        direction = 1 if by_color == "white" else -1
         # Pawn attacks
         for dc in (-1, 1):
             pr, pc = r + direction, c + dc
@@ -304,7 +304,7 @@ class Board:
             self.set_piece(end, moved_piece)
             self.set_piece(start, None)
             direction = -1 if moved_piece.color == "white" else 1
-            captured_square = (end[0] + direction, end[1])
+            captured_square = (end[0] - direction, end[1])
             captured = self.get_piece(captured_square)
             self.set_piece(captured_square, None)
         else:
