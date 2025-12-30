@@ -305,15 +305,17 @@ def _minimax(
 
     tt_entry: Optional[TTEntry] = None
     tt_key: Optional[int] = None
+    ordering_entry: Optional[TTEntry] = None
     if transposition_table:
         tt_key = zobrist_hash(board, current_color)
+        ordering_entry = transposition_table.probe(tt_key)
         tt_entry = tt_probe(transposition_table, tt_key, depth, alpha, beta)
         if tt_entry:
             return tt_entry.score
 
-    if tt_entry and tt_entry.best_move:
+    if ordering_entry and ordering_entry.best_move:
         for idx, move in enumerate(legal_moves):
-            if move == tt_entry.best_move:
+            if move == ordering_entry.best_move:
                 legal_moves.insert(0, legal_moves.pop(idx))
                 break
 
@@ -495,6 +497,17 @@ def choose_move(
         ),
         reverse=True,
     )
+    tt_order_entry: Optional[TTEntry] = None
+    if transposition_table:
+        tt_key = zobrist_hash(board, color)
+        tt_order_entry = transposition_table.probe(tt_key)
+
+    if tt_order_entry and tt_order_entry.best_move:
+        for idx, move in enumerate(legal_moves):
+            if move == tt_order_entry.best_move:
+                legal_moves.insert(0, legal_moves.pop(idx))
+                break
+
     if not legal_moves:
         return None
 
@@ -526,6 +539,12 @@ def choose_move(
             ),
             reverse=True,
         )
+
+        if tt_order_entry and tt_order_entry.best_move:
+            for idx, move in enumerate(legal_moves):
+                if move == tt_order_entry.best_move:
+                    legal_moves.insert(0, legal_moves.pop(idx))
+                    break
 
         for move in legal_moves:
             if max_nodes is not None and node_counter["count"] >= max_nodes:

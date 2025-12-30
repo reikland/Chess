@@ -1,5 +1,6 @@
 from chess_engine.ai.engine import choose_move, evaluate_board
 from chess_engine.board import Board, Move, Piece
+from chess_engine.transposition import EXACT, TranspositionTable, store, zobrist_hash
 
 
 def _basic_kings(board: Board) -> None:
@@ -57,3 +58,24 @@ def test_lone_black_king_still_has_legal_escape():
 
     assert move is not None
     assert move.end == Board.algebraic_to_square("h2")
+
+
+def test_tt_best_move_used_for_ordering_with_node_budget():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (False, False, False, False)
+    _basic_kings(board)
+    rook_start = Board.algebraic_to_square("h1")
+    rook_target = Board.algebraic_to_square("g1")
+    board.set_piece(rook_start, Piece("R", "white"))
+
+    transposition_table = TranspositionTable()
+    key = zobrist_hash(board, "white")
+    best_move = Move(rook_start, rook_target)
+    store(transposition_table, key, depth=1, score=0.5, flag=EXACT, best_move=best_move)
+
+    move = choose_move(
+        board, depth=2, color="white", max_nodes=1, transposition_table=transposition_table
+    )
+
+    assert move == best_move
