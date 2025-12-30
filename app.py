@@ -143,6 +143,8 @@ class ChessApp:
             return f"Échec et mat ! {winner} gagne."
         if status == "stalemate":
             return "Pat. Partie nulle."
+        if status == "draw by fifty-move rule":
+            return "Partie nulle par règle des 50 coups."
         if "check" in status:
             return f"{turn} est en échec."
         return status
@@ -168,6 +170,9 @@ class ChessApp:
         row = event.y // self.square_size
         col = event.x // self.square_size
         if not (0 <= row < 8 and 0 <= col < 8):
+            return
+        if self.game.is_over():
+            self.status_var.set(self._status_text())
             return
         clicked = (int(row), int(col))
 

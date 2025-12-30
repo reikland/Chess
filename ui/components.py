@@ -112,10 +112,28 @@ def _promotion_label(promotion: int | None) -> str:
     return labels.get(promotion, "Dame")
 
 
+def _is_game_over(board: chess.Board) -> bool:
+    checker = getattr(board, "is_game_over", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker(claim_draw=True))
+    except TypeError:
+        return bool(checker())
+
+
 def _announce_board_state(board: chess.Board, player: str) -> None:
     """Push toast messages reflecting the latest board state."""
 
-    if board.is_checkmate():
+    can_claim_fifty = getattr(board, "can_claim_fifty_moves", None)
+    try:
+        fifty_move_reached = bool(can_claim_fifty()) if callable(can_claim_fifty) else False
+    except TypeError:
+        fifty_move_reached = False
+
+    if fifty_move_reached:
+        _push_message("Règle des 50 coups atteinte : partie nulle.", "🤝")
+    elif board.is_checkmate():
         _push_message(f"Échec et mat ! {player} remporte la partie.", "🏁")
     elif board.is_stalemate():
         _push_message("Pat détecté : partie nulle.", "🤝")
@@ -153,6 +171,10 @@ def _update_last_move(game: dict) -> None:
 def on_square_click(square: str) -> None:
     game = st.session_state["game"]
     board: chess.Board = game["board"]
+
+    if _is_game_over(board):
+        _push_message("La partie est terminée : aucun coup supplémentaire autorisé.", "⚠️")
+        return
 
     if game.get("pending_promotion"):
         _push_message("Choisissez d'abord la pièce de promotion en attente.", "⚠️")
@@ -374,7 +396,7 @@ def apply_ai_move() -> None:
         _push_message("Ce n'est pas au tour de l'IA de jouer.", "ℹ️")
         return
 
-    if board.is_game_over():
+    if _is_game_over(board):
         _push_message("La partie est terminée, l'IA ne peut pas jouer.", "⚠️")
         return
 

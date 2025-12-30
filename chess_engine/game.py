@@ -81,16 +81,25 @@ class Game:
     def is_over(self) -> bool:
         """Return True when the current player has no legal moves."""
 
-        return self.is_checkmate(self.turn) or self.is_stalemate(self.turn)
+        return (
+            self.is_checkmate(self.turn)
+            or self.is_stalemate(self.turn)
+            or self.is_fifty_move_draw()
+        )
 
     def game_status(self) -> str:
         if self.is_checkmate(self.turn):
             return f"{self.turn} in checkmate"
         if self.is_stalemate(self.turn):
             return "stalemate"
+        if self.is_fifty_move_draw():
+            return "draw by fifty-move rule"
         if self.in_check(self.turn):
             return f"{self.turn} in check"
         return "ongoing"
 
     def piece_at(self, square: str) -> Optional[Piece]:
         return self.board.get_piece(self.board.algebraic_to_square(square))
+
+    def is_fifty_move_draw(self) -> bool:
+        return self.board.is_fifty_move_draw()
