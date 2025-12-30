@@ -324,12 +324,6 @@ def _engine_board_from_python(board: chess.Board) -> Board:
         board.has_kingside_castling_rights(chess.BLACK),
         board.has_queenside_castling_rights(chess.BLACK),
     )
-    engine_board.en_passant_target = (
-        Board.algebraic_to_square(chess.square_name(board.ep_square))
-        if board.ep_square is not None
-        else None
-    )
-
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if not piece:
