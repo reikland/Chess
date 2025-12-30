@@ -143,9 +143,9 @@ class ChessApp:
             return f"Échec et mat ! {winner} gagne."
         if status == "stalemate":
             return "Pat. Partie nulle."
-        if status == "draw by fifty-move rule":
+        if status in ("draw by fifty-move rule", "partie nulle par règle des 50 coups"):
             return "Partie nulle par règle des 50 coups."
-        if status == "draw by repetition":
+        if status in ("draw by repetition", "partie nulle par répétition"):
             return "Partie nulle par répétition."
         if "check" in status:
             return f"{turn} est en échec."
