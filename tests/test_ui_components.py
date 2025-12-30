@@ -27,6 +27,49 @@ class DummyBoard:
         return self._pieces.get(idx)
 
 
+class StatusBoard:
+    def __init__(
+        self,
+        *,
+        turn: bool = chess.WHITE,
+        checkmate: bool = False,
+        stalemate: bool = False,
+        fifty_draw: bool = False,
+        repetition: bool = False,
+        in_check: bool = False,
+    ) -> None:
+        self.turn = turn
+        self._checkmate = checkmate
+        self._stalemate = stalemate
+        self._fifty_draw = fifty_draw
+        self._repetition = repetition
+        self._check = in_check
+
+    def is_checkmate(self) -> bool:  # type: ignore[override]
+        return self._checkmate
+
+    def is_stalemate(self) -> bool:  # type: ignore[override]
+        return self._stalemate
+
+    def can_claim_fifty_moves(self) -> bool:
+        return self._fifty_draw
+
+    def is_fifty_moves(self) -> bool:
+        return self._fifty_draw
+
+    def can_claim_threefold_repetition(self) -> bool:
+        return self._repetition
+
+    def is_repetition(self, count: int | None = None) -> bool:
+        return self._repetition
+
+    def is_check(self) -> bool:  # type: ignore[override]
+        return self._check
+
+    def is_game_over(self, claim_draw: bool | None = None) -> bool:
+        return self._checkmate or self._stalemate or self._fifty_draw or self._repetition
+
+
 def _install_streamlit_stub(monkeypatch, session_state: dict) -> types.ModuleType:
     stub = types.ModuleType("streamlit")
     stub.session_state = session_state
@@ -69,3 +112,31 @@ def test_switch_piece_selection_updates_highlights(monkeypatch):
     assert session_state["game"]["selected_square"] == "d2"
     assert session_state["game"]["legal_moves"]
     assert session_state.get("messages") == []
+
+
+def test_status_message_handles_fifty_move_draw(monkeypatch):
+    session_state = {"game": {}, "messages": []}
+    _install_streamlit_stub(monkeypatch, session_state)
+    components = importlib.import_module("ui.components")
+    importlib.reload(components)
+
+    board = StatusBoard(fifty_draw=True)
+
+    assert (
+        components._status_message(board)
+        == "Partie nulle par règle des 50 coups."
+    )
+
+
+def test_status_message_handles_repetition_draw(monkeypatch):
+    session_state = {"game": {}, "messages": []}
+    _install_streamlit_stub(monkeypatch, session_state)
+    components = importlib.import_module("ui.components")
+    importlib.reload(components)
+
+    board = StatusBoard(repetition=True)
+
+    assert (
+        components._status_message(board)
+        == "Partie nulle par répétition."
+    )

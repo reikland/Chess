@@ -3,6 +3,7 @@ import tkinter as tk
 import pytest
 
 from app import ChessApp
+from chess_engine.game import Game
 
 
 @pytest.fixture
@@ -48,3 +49,53 @@ def test_ai_status_indicator(monkeypatch, app_instance):
 
     assert status_updates[0] == "L'IA réfléchit..."
     assert app.status_var.get() == "Aucun coup disponible pour l'IA."
+
+
+def test_status_text_includes_repetition_draw(app_instance):
+    app = app_instance
+    game = Game()
+
+    moves = [
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+    ]
+    for start, end in moves:
+        game.make_move(start, end)
+
+    app.game = game
+    app.status_var.set(app._status_text())
+
+    assert app.status_var.get() == "Partie nulle par répétition."
+
+
+def test_click_clears_selection_when_game_over(app_instance):
+    app = app_instance
+    game = Game()
+
+    moves = [
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+    ]
+    for start, end in moves:
+        game.make_move(start, end)
+
+    app.game = game
+    app.selected = (0, 0)
+
+    event = type("Event", (), {"x": 1, "y": 1})
+    app.on_click(event)
+
+    assert app.selected is None
+    assert "Partie nulle" in app.status_var.get()
