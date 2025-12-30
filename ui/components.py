@@ -48,6 +48,25 @@ def _legal_targets(legal_moves: Sequence[chess.Move]) -> set[str]:
     return {chess.square_name(move.to_square) for move in legal_moves}
 
 
+def _match_legal_move(board: chess.Board, candidate: chess.Move) -> chess.Move | None:
+    """Return the legal move equivalent to ``candidate`` if it exists."""
+
+    legal_moves = list(board.legal_moves)
+
+    for legal_move in legal_moves:
+        if legal_move == candidate:
+            return legal_move
+
+    for legal_move in legal_moves:
+        if (
+            legal_move.from_square == candidate.from_square
+            and legal_move.to_square == candidate.to_square
+            and legal_move.promotion == candidate.promotion
+        ):
+            return legal_move
+    return None
+
+
 def _square_label(
     name: str,
     piece: chess.Piece | None,
@@ -174,11 +193,18 @@ def on_square_click(square: str) -> None:
         _push_message("Coup illégal : destination invalide.", "⚠️")
         return
 
+    legal_move = _match_legal_move(board, move)
+    if legal_move is None:
+        game["selected_square"] = None
+        game["legal_moves"] = []
+        _push_message("Coup non légal dans la position actuelle.", "⚠️")
+        return
+
     promotion_moves = [
         item
         for item in legal_moves
-        if item.from_square == move.from_square
-        and item.to_square == move.to_square
+        if item.from_square == legal_move.from_square
+        and item.to_square == legal_move.to_square
         and item.promotion
     ]
     if promotion_moves:
@@ -190,7 +216,7 @@ def on_square_click(square: str) -> None:
         _push_message("Choisissez la pièce de promotion désirée.", "♕")
         return
 
-    _record_move(move, _current_player(board), is_ai=False)
+    _record_move(legal_move, _current_player(board), is_ai=False)
     if st.session_state["preferences"].get("mode") == "Humain vs IA":
         apply_ai_move()
 
@@ -198,6 +224,10 @@ def on_square_click(square: str) -> None:
 def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
     game = st.session_state["game"]
     board: chess.Board = game["board"]
+
+    if not board.is_legal(move):
+        _push_message("Coup illégal : impossible de l'appliquer.", "⚠️")
+        return
 
     san = board.san(move)
     board.push(move)
@@ -237,15 +267,28 @@ def _render_promotion_prompt() -> None:
     board: chess.Board = game["board"]
 
     st.warning("Promotion : choisissez la pièce souhaitée.")
+    option_keys = list(options.keys())
     selection = st.radio(
         "Pièce de promotion",
-        options=list(options.keys()),
+        options=option_keys,
         format_func=_promotion_label,
         key="promotion_choice",
+        index=option_keys.index(st.session_state.get("promotion_choice"))
+        if st.session_state.get("promotion_choice") in option_keys
+        else None,
     )
 
+    if selection is not None:
+        st.caption(f"Pièce sélectionnée : {_promotion_label(selection)}")
+    else:
+        st.caption("Sélectionnez une pièce pour valider la promotion.")
+
     confirm_col, cancel_col = st.columns(2)
-    if confirm_col.button("Valider la promotion", use_container_width=True):
+    if confirm_col.button(
+        "Valider la promotion",
+        use_container_width=True,
+        disabled=selection is None,
+    ):
         chosen_move = options.get(selection)
         if chosen_move:
             _record_move(chosen_move, _current_player(board), is_ai=False)
@@ -342,7 +385,12 @@ def apply_ai_move() -> None:
         return
 
     move = _convert_engine_move(engine_move)
-    _record_move(move, f"IA ({preferences.get('ai_color')})", is_ai=True)
+    legal_move = _match_legal_move(board, move)
+    if legal_move is None:
+        _push_message("Le coup proposé par l'IA n'est pas légal.", "⚠️")
+        return
+
+    _record_move(legal_move, f"IA ({preferences.get('ai_color')})", is_ai=True)
 
 
 def render_board() -> None:
