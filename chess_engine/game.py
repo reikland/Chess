@@ -23,14 +23,28 @@ class Game:
         legal = self.legal_moves()
         candidate = None
         for mv in legal:
-            if mv.start == move_start and mv.end == move_end and mv.promotion == promotion:
+            if (
+                mv.start == move_start
+                and mv.end == move_end
+                and mv.promotion == promotion
+                and not mv.is_en_passant
+            ):
                 candidate = mv
                 break
-            if mv.start == move_start and mv.end == move_end and mv.promotion and promotion is None:
+            if (
+                mv.start == move_start
+                and mv.end == move_end
+                and mv.promotion
+                and promotion is None
+                and not mv.is_en_passant
+            ):
                 # default to queen promotion when not specified
                 if mv.promotion == "Q":
                     candidate = mv
                     break
+            if mv.start == move_start and mv.end == move_end and mv.is_en_passant:
+                candidate = mv
+                break
         if candidate is None:
             raise ValueError("Illegal move")
         # Update promotion piece if specified
