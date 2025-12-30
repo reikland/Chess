@@ -175,6 +175,18 @@ def on_square_click(square: str) -> None:
         game["legal_moves"] = []
         return
 
+    available_moves = _available_moves_from(board, square)
+
+    if (
+        square != selected_square
+        and available_moves
+        and (piece := board.piece_at(chess.parse_square(square)))
+        and piece.color == board.turn
+    ):
+        game["selected_square"] = square
+        game["legal_moves"] = available_moves
+        return
+
     move = next(
         (
             item
@@ -186,10 +198,9 @@ def on_square_click(square: str) -> None:
     )
 
     if move is None:
-        alternative_moves = _available_moves_from(board, square)
-        if alternative_moves:
+        if available_moves:
             game["selected_square"] = square
-            game["legal_moves"] = alternative_moves
+            game["legal_moves"] = available_moves
         _push_message("Coup illégal : destination invalide.", "⚠️")
         return
 
