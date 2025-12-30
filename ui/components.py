@@ -9,6 +9,15 @@ import streamlit as st
 
 from chess_engine.ai import choose_move
 from chess_engine.board import Board, Move as EngineMove, Piece
+from services.storage import (
+    export_fen,
+    export_pgn,
+    import_fen,
+    import_pgn,
+    load_game,
+    refresh_serialized_buffers,
+    serialize_game,
+)
 
 
 def _piece_symbol(piece: chess.Piece | None) -> str:
@@ -133,7 +142,18 @@ def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
     game["legal_moves"] = []
     if is_ai:
         st.session_state["last_ai_move"] = san
-        _push_message(f"L'IA joue {san}", "🤖")
+    _push_message(f"L'IA joue {san}", "🤖")
+
+
+def _load_game_state(game_state: dict) -> None:
+    st.session_state["game"] = {
+        **game_state,
+        "selected_square": None,
+        "legal_moves": [],
+    }
+    _update_last_move(st.session_state["game"])
+    st.session_state["last_ai_move"] = None
+    _push_message("Partie chargée.", "💾")
 
 
 def _engine_board_from_python(board: chess.Board) -> Board:
@@ -303,6 +323,8 @@ def render_move_controls() -> None:
         st.button("Jouer pour l'IA", on_click=apply_ai_move, use_container_width=True)
     st.caption("Sélectionnez une pièce puis une destination pour jouer un coup.")
 
+    _render_storage_controls()
+
 
 def render_status_bar() -> None:
     board: chess.Board = st.session_state["game"]["board"]
@@ -311,3 +333,64 @@ def render_status_bar() -> None:
     st.info(f"{status} : {current_player}")
     if st.session_state.get("last_ai_move"):
         st.caption(f"Dernier coup IA : {st.session_state['last_ai_move']}")
+
+
+def _render_storage_controls() -> None:
+    game = st.session_state["game"]
+    refresh_serialized_buffers(game, st.session_state)
+
+    st.subheader("Sauvegarde et import/export")
+    with st.expander("Sauvegarde JSON"):
+        st.download_button(
+            "Télécharger l'état", data=serialize_game(game), file_name="chess_game.json"
+        )
+        st.text_area(
+            "État JSON",
+            key="json_buffer",
+            help="Collez une sauvegarde ou récupérez l'état courant.",
+        )
+        col1, col2 = st.columns(2)
+        col1.button(
+            "Mettre à jour depuis la partie",
+            on_click=lambda: st.session_state.update(
+                {"json_buffer": serialize_game(st.session_state["game"])}
+            ),
+            use_container_width=True,
+        )
+        col2.button(
+            "Charger la sauvegarde",
+            on_click=lambda: _load_game_state(load_game(st.session_state["json_buffer"])),
+            use_container_width=True,
+        )
+
+    with st.expander("FEN"):
+        st.text_input("Chaîne FEN", key="fen_buffer")
+        fen_col1, fen_col2 = st.columns(2)
+        fen_col1.button(
+            "Exporter la position",
+            on_click=lambda: st.session_state.update(
+                {"fen_buffer": export_fen(st.session_state["game"])}
+            ),
+            use_container_width=True,
+        )
+        fen_col2.button(
+            "Importer la position",
+            on_click=lambda: _load_game_state(import_fen(st.session_state["fen_buffer"])),
+            use_container_width=True,
+        )
+
+    with st.expander("PGN"):
+        st.text_area("Partie PGN", key="pgn_buffer")
+        pgn_col1, pgn_col2 = st.columns(2)
+        pgn_col1.button(
+            "Exporter la partie",
+            on_click=lambda: st.session_state.update(
+                {"pgn_buffer": export_pgn(st.session_state["game"])}
+            ),
+            use_container_width=True,
+        )
+        pgn_col2.button(
+            "Importer la partie",
+            on_click=lambda: _load_game_state(import_pgn(st.session_state["pgn_buffer"])),
+            use_container_width=True,
+        )
