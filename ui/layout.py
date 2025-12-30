@@ -1,5 +1,7 @@
 """Layout helpers for the chess Streamlit app."""
 
+from __future__ import annotations
+
 import streamlit as st
 
 from ui import state
@@ -10,6 +12,7 @@ from ui.components import (
     render_move_history,
     render_status_bar,
 )
+from ui.theme import apply_theme
 
 
 def render_sidebar() -> None:
@@ -44,10 +47,19 @@ def render_sidebar() -> None:
         max_value=60,
         value=int(preferences.get("timer_minutes", 10)),
     )
+    preferences["show_clock"] = st.sidebar.checkbox(
+        "Afficher l'horloge",
+        value=bool(preferences.get("show_clock", True)),
+    )
     preferences["show_move_hints"] = st.sidebar.checkbox(
         "Afficher les coups légaux pour la sélection",
         value=bool(preferences.get("show_move_hints", True)),
     )
+
+    if preferences.get("timer_minutes") != st.session_state.get("clock_timer_minutes"):
+        st.session_state["clock"] = state.init_clock_from_preferences()
+        st.session_state["clock_timer_minutes"] = preferences["timer_minutes"]
+        st.toast("Horloge réinitialisée avec la nouvelle durée.", icon="⏱️")
 
     st.sidebar.divider()
     last_ai_move = st.session_state.get("last_ai_move")
@@ -74,5 +86,6 @@ def render_main_area() -> None:
 
 def render_app() -> None:
     state.init_session_state()
+    apply_theme(st.session_state["preferences"].get("theme", "Classique"))
     render_sidebar()
     render_main_area()
