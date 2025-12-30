@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional, Tuple
+import time
+
+from typing import Dict, Optional, Tuple
 
 from chess_engine.board import Board, Color, Move, Piece
 from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
@@ -89,12 +91,17 @@ def _quiescence(
     max_nodes: Optional[int],
     node_counter: dict[str, int],
     transposition_table: Optional[TranspositionTable],
+    deadline: Optional[float],
 ) -> float:
     """Extend leaf searches by exploring forcing moves (captures, promotions, checks).
 
     ``q_depth`` limits how far the quiescence search can extend to avoid
     exponential blowups in tactical positions.
     """
+
+    if deadline is not None and time.time() >= deadline:
+        base_score = evaluate_board(board)
+        return base_score if maximizing_color == "white" else -base_score
 
     node_counter["count"] += 1
     if max_nodes is not None and node_counter["count"] > max_nodes:
@@ -160,6 +167,7 @@ def _quiescence(
             max_nodes,
             node_counter,
             transposition_table,
+            deadline,
         )
         board.undo()
         if maximizing:
@@ -196,7 +204,12 @@ def _minimax(
     transposition_table: Optional[TranspositionTable],
     killer_moves: Dict[int, list[Move]],
     history_scores: Dict[Tuple, int],
+    deadline: Optional[float],
 ) -> float:
+    if deadline is not None and time.time() >= deadline:
+        base_score = evaluate_board(board)
+        return base_score if maximizing_color == "white" else -base_score
+
     node_counter["count"] += 1
     if max_nodes is not None and node_counter["count"] > max_nodes:
         base_score = evaluate_board(board)
@@ -216,6 +229,7 @@ def _minimax(
             max_nodes,
             node_counter,
             transposition_table,
+            deadline,
         )
 
     legal_moves = sorted(
@@ -237,6 +251,58 @@ def _minimax(
     next_color: Color = "black" if current_color == "white" else "white"
     best_move_found: Optional[Move] = None
 
+    def _apply_null_move_allowed() -> bool:
+        if depth < 2:
+            return False
+        if board.in_check(current_color):
+            return False
+        non_pawn = 0
+        pawns = 0
+        for row in board.board:
+            for piece in row:
+                if piece and piece.color == current_color:
+                    if piece.kind == "P":
+                        pawns += 1
+                    elif piece.kind != "K":
+                        non_pawn += 1
+        return not (non_pawn == 0 and pawns <= 4)
+
+    def _null_move_search(beta_window: float) -> Optional[float]:
+        prev_en_passant = board.en_passant_square
+        prev_halfmove = board.halfmove_clock
+        prev_castling = board.castling_rights
+
+        board.en_passant_square = None
+        board.halfmove_clock += 1
+        reduction = 2 if depth > 5 else 1
+        search_depth = max(0, depth - 1 - reduction)
+        score = _minimax(
+            board,
+            search_depth,
+            next_color,
+            maximizing_color,
+            beta_window - 1,
+            beta_window,
+            max_nodes,
+            node_counter,
+            transposition_table,
+            killer_moves,
+            history_scores,
+            deadline,
+        )
+
+        board.en_passant_square = prev_en_passant
+        board.halfmove_clock = prev_halfmove
+        board.castling_rights = prev_castling
+        return score
+
+    if _apply_null_move_allowed():
+        null_score = _null_move_search(beta)
+        if maximizing and null_score is not None and null_score >= beta:
+            return null_score
+        if not maximizing and null_score is not None and null_score <= alpha:
+            return null_score
+
     tt_entry: Optional[TTEntry] = None
     tt_key: Optional[int] = None
     if transposition_table:
@@ -255,12 +321,26 @@ def _minimax(
 
     if maximizing:
         value = float("-inf")
-        for move in legal_moves:
+        for idx, move in enumerate(legal_moves):
             is_capture = _captured_piece(board, move) is not None
+            is_promotion = move.promotion is not None
             board.apply_move(move)
+            gives_check = board.in_check(next_color)
+
+            reduction = 0
+            if (
+                depth >= 3
+                and idx >= 3
+                and not is_capture
+                and not is_promotion
+                and not gives_check
+            ):
+                reduction = 1 if depth < 5 else 2
+
+            search_depth = max(0, depth - 1 - reduction)
             score = _minimax(
                 board,
-                depth - 1,
+                search_depth,
                 next_color,
                 maximizing_color,
                 alpha,
@@ -270,7 +350,25 @@ def _minimax(
                 transposition_table,
                 killer_moves,
                 history_scores,
+                deadline,
             )
+
+            if reduction and score > alpha:
+                score = _minimax(
+                    board,
+                    depth - 1,
+                    next_color,
+                    maximizing_color,
+                    alpha,
+                    beta,
+                    max_nodes,
+                    node_counter,
+                    transposition_table,
+                    killer_moves,
+                    history_scores,
+                    deadline,
+                )
+
             board.undo()
             if score > value:
                 value = score
@@ -289,12 +387,26 @@ def _minimax(
                 break
     else:
         value = float("inf")
-        for move in legal_moves:
+        for idx, move in enumerate(legal_moves):
             is_capture = _captured_piece(board, move) is not None
+            is_promotion = move.promotion is not None
             board.apply_move(move)
+            gives_check = board.in_check(next_color)
+
+            reduction = 0
+            if (
+                depth >= 3
+                and idx >= 3
+                and not is_capture
+                and not is_promotion
+                and not gives_check
+            ):
+                reduction = 1 if depth < 5 else 2
+
+            search_depth = max(0, depth - 1 - reduction)
             score = _minimax(
                 board,
-                depth - 1,
+                search_depth,
                 next_color,
                 maximizing_color,
                 alpha,
@@ -304,7 +416,25 @@ def _minimax(
                 transposition_table,
                 killer_moves,
                 history_scores,
+                deadline,
             )
+
+            if reduction and score < beta:
+                score = _minimax(
+                    board,
+                    depth - 1,
+                    next_color,
+                    maximizing_color,
+                    alpha,
+                    beta,
+                    max_nodes,
+                    node_counter,
+                    transposition_table,
+                    killer_moves,
+                    history_scores,
+                    deadline,
+                )
+
             board.undo()
             if score < value:
                 value = score
@@ -337,6 +467,7 @@ def choose_move(
     depth: int,
     color: Color,
     max_nodes: Optional[int] = None,
+    time_limit_ms: Optional[int] = None,
     transposition_table: Optional[TranspositionTable] = None,
 ) -> Optional[Move]:
     """Return the best move for ``color`` using minimax with alpha-beta pruning.
@@ -346,6 +477,8 @@ def choose_move(
     is exhausted, a quiescence phase explores only forcing moves (captures or
     moves that give check) ordered by the capture heuristic to smooth tactical
     swings before returning an evaluation.
+    ``time_limit_ms`` offers a soft wallclock budget for the iterative deepening
+    search, returning the best move found so far when the timer elapses.
     """
 
     killer_moves: Dict[int, list[Move]] = {}
@@ -374,6 +507,10 @@ def choose_move(
     node_counter = {"count": 0}
     transposition_table = transposition_table or TranspositionTable()
 
+    deadline: Optional[float] = None
+    if time_limit_ms is not None and time_limit_ms > 0:
+        deadline = time.time() + (time_limit_ms / 1000)
+
     for current_depth in range(1, depth + 1):
         depth_best_move: Optional[Move] = None
         depth_best_score = float("-inf")
@@ -393,6 +530,8 @@ def choose_move(
         for move in legal_moves:
             if max_nodes is not None and node_counter["count"] >= max_nodes:
                 break
+            if deadline is not None and time.time() >= deadline:
+                break
 
             board.apply_move(move)
             score = _minimax(
@@ -407,6 +546,7 @@ def choose_move(
                 transposition_table,
                 killer_moves,
                 history_scores,
+                deadline,
             )
             board.undo()
             if depth_best_move is None or score > depth_best_score:
@@ -421,6 +561,8 @@ def choose_move(
                 legal_moves.insert(0, depth_best_move)
 
         if max_nodes is not None and node_counter["count"] >= max_nodes:
+            break
+        if deadline is not None and time.time() >= deadline:
             break
 
     return best_move
