@@ -37,7 +37,7 @@ def render_sidebar() -> None:
     preferences["ai_depth"] = st.sidebar.slider(
         "Profondeur de recherche IA",
         min_value=1,
-        max_value=6,
+        max_value=20,
         value=int(preferences.get("ai_depth", 2)),
         disabled=preferences.get("mode") != "Humain vs IA",
     )

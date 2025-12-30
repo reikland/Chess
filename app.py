@@ -87,7 +87,7 @@ class ChessApp:
         ttk.Spinbox(
             top,
             from_=1,
-            to=6,
+            to=20,
             textvariable=self.ai_depth_var,
             width=5,
         ).grid(row=0, column=7, padx=5)
