@@ -201,15 +201,22 @@ class ChessApp:
                 promotion = self._choose_promotion(moving_piece.color)
 
         human_played = False
+        move_refused = False
         try:
             move = self.game.make_move(start_alg, end_alg, promotion=promotion)
             self.last_move = (move.start, move.end)
             self.status_var.set(self._status_text())
             human_played = True
         except ValueError:
-            self.status_var.set("Coup illégal. Réessayez.")
+            self.status_var.set(
+                "Coup refusé : mouvement illégal. Choisissez une destination valide"
+                " ou sélectionnez une autre pièce."
+            )
+            move_refused = True
+            self.selected = start
         finally:
-            self.selected = None
+            if not move_refused:
+                self.selected = None
             self.draw_board()
             if human_played and self.mode_var.get() == "Humain vs IA":
                 self.root.after(50, self.play_ai_move)
@@ -226,6 +233,10 @@ class ChessApp:
 
         if self.game.turn != self._ai_color():
             return
+
+        self.status_var.set("L'IA réfléchit...")
+        self.draw_board()
+        self.root.update_idletasks()
 
         move = choose_move(
             self.game.board,
@@ -255,7 +266,8 @@ class ChessApp:
         light_color = "#f0d9b5"
         dark_color = "#b58863"
         highlight = "#f4f06f"
-        last_move_color = "#9dd9d2"
+        last_move_from = "#8ecae6"
+        last_move_to = "#ffb703"
 
         for r in range(8):
             for c in range(8):
@@ -267,8 +279,10 @@ class ChessApp:
                 base_color = light_color if (r + c) % 2 == 0 else dark_color
                 fill_color = base_color
 
-                if self.last_move and ((r, c) == self.last_move[0] or (r, c) == self.last_move[1]):
-                    fill_color = last_move_color
+                if self.last_move and (r, c) == self.last_move[0]:
+                    fill_color = last_move_from
+                if self.last_move and (r, c) == self.last_move[1]:
+                    fill_color = last_move_to
                 if self.selected == (r, c):
                     fill_color = highlight
 
