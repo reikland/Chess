@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
-from chess_engine.board import Board, Color, Move
+from chess_engine.board import Board, Color, Move, _iter_bits
 
 EXACT = "exact"
 LOWERBOUND = "lower"
@@ -61,11 +61,18 @@ def zobrist_hash(board: Board, side_to_move: Color) -> int:
     """Return a deterministic Zobrist hash for ``board`` and the side to move."""
 
     h = 0
-    for r in range(8):
-        for c in range(8):
-            piece = board.get_piece((r, c))
-            if piece:
-                h ^= _PIECE_KEYS[(piece.color, piece.kind)][r * 8 + c]
+    piece_bitboards = getattr(board, "piece_bitboards", None)
+    if piece_bitboards:
+        for color, per_piece in piece_bitboards.items():
+            for kind, bitboard in per_piece.items():
+                for idx in _iter_bits(bitboard):
+                    h ^= _PIECE_KEYS[(color, kind)][idx]
+    else:
+        for r in range(8):
+            for c in range(8):
+                piece = board.get_piece((r, c))
+                if piece:
+                    h ^= _PIECE_KEYS[(piece.color, piece.kind)][r * 8 + c]
 
     for idx, right in enumerate(board.castling_rights):
         if right:

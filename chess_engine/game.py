@@ -7,8 +7,8 @@ from .board import Board, Move, Piece
 
 
 class Game:
-    def __init__(self) -> None:
-        self.board = Board()
+    def __init__(self, board_factory=Board) -> None:
+        self.board = board_factory()
         self.turn: str = "white"
         self.move_stack: List[Move] = []
         self.position_counts: Counter[str] = Counter()

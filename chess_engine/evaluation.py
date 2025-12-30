@@ -160,10 +160,8 @@ def _interpolate(mid_value: float, end_value: float, phase: float) -> float:
 
 def _game_phase(board: Board) -> float:
     remaining_phase = 0
-    for row in board.board:
-        for piece in row:
-            if piece:
-                remaining_phase += PHASE_WEIGHTS[piece.kind]
+    for piece, _, _ in board.iter_pieces():
+        remaining_phase += PHASE_WEIGHTS[piece.kind]
     return max(0.0, min(1.0, remaining_phase / TOTAL_PHASE))
 
 
@@ -175,25 +173,18 @@ def _piece_square_value(table: Tuple[Tuple[float, ...], ...], piece: Piece, row:
 def _material_and_position(board: Board) -> Tuple[float, float]:
     mid_score = 0.0
     end_score = 0.0
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if not piece:
-                continue
-            sign = 1.0 if piece.color == "white" else -1.0
-            base_value = PieceValue.get(piece.kind, 0.0)
-            mid_table = MIDGAME_TABLES[piece.kind]
-            end_table = ENDGAME_TABLES[piece.kind]
-            mid_score += sign * (base_value + _piece_square_value(mid_table, piece, r, c))
-            end_score += sign * (base_value + _piece_square_value(end_table, piece, r, c))
+    for piece, r, c in board.iter_pieces():
+        sign = 1.0 if piece.color == "white" else -1.0
+        base_value = PieceValue.get(piece.kind, 0.0)
+        mid_table = MIDGAME_TABLES[piece.kind]
+        end_table = ENDGAME_TABLES[piece.kind]
+        mid_score += sign * (base_value + _piece_square_value(mid_table, piece, r, c))
+        end_score += sign * (base_value + _piece_square_value(end_table, piece, r, c))
     return mid_score, end_score
 
 
 def _file_has_pawn(board: Board, file_index: int, color: Color) -> bool:
-    return any(
-        (piece is not None and piece.kind == "P" and piece.color == color)
-        for piece in (board.board[r][file_index] for r in range(8))
-    )
+    return any(piece.kind == "P" and piece.color == color for piece, _ in board.file_pieces(file_index))
 
 
 def king_safety(board: Board) -> Tuple[float, float]:
@@ -228,11 +219,9 @@ def king_safety(board: Board) -> Tuple[float, float]:
 
 def _pawn_files(board: Board, color: Color) -> Dict[int, list[Tuple[int, int]]]:
     files: Dict[int, list[Tuple[int, int]]] = {i: [] for i in range(8)}
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if piece and piece.kind == "P" and piece.color == color:
-                files[c].append((r, c))
+    for piece, r, c in board.iter_pieces():
+        if piece.kind == "P" and piece.color == color:
+            files[c].append((r, c))
     return files
 
 
@@ -274,14 +263,12 @@ def pawn_structure(board: Board) -> float:
 
 def _minor_centralization(board: Board) -> float:
     score = 0.0
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if piece is None or piece.kind not in {"N", "B"}:
-                continue
-            distance = abs(3.5 - r) + abs(3.5 - c)
-            centralization = (3.5 - distance) * CONFIG.minor_centralization_bonus
-            score += centralization if piece.color == "white" else -centralization
+    for piece, r, c in board.iter_pieces():
+        if piece.kind not in {"N", "B"}:
+            continue
+        distance = abs(3.5 - r) + abs(3.5 - c)
+        centralization = (3.5 - distance) * CONFIG.minor_centralization_bonus
+        score += centralization if piece.color == "white" else -centralization
     return score
 
 
@@ -308,21 +295,19 @@ def _pawn_attacks_square(board: Board, square: Tuple[int, int], attacker: Color)
 def _outpost_squares(board: Board) -> Tuple[float, float]:
     mid_score = 0.0
     end_score = 0.0
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if piece is None or piece.kind not in {"N", "B"}:
-                continue
+    for piece, r, c in board.iter_pieces():
+        if piece.kind not in {"N", "B"}:
+            continue
 
-            supported_by_pawn = _pawn_attacks_square(board, (r, c), piece.color)
-            enemy = "black" if piece.color == "white" else "white"
-            attacked_by_enemy_pawn = _pawn_attacks_square(board, (r, c), enemy)
+        supported_by_pawn = _pawn_attacks_square(board, (r, c), piece.color)
+        enemy = "black" if piece.color == "white" else "white"
+        attacked_by_enemy_pawn = _pawn_attacks_square(board, (r, c), enemy)
 
-            if supported_by_pawn and not attacked_by_enemy_pawn:
-                outpost_bonus = 0.15 if piece.kind == "N" else 0.1
-                sign = 1.0 if piece.color == "white" else -1.0
-                mid_score += sign * outpost_bonus
-                end_score += sign * (outpost_bonus * 0.5)
+        if supported_by_pawn and not attacked_by_enemy_pawn:
+            outpost_bonus = 0.15 if piece.kind == "N" else 0.1
+            sign = 1.0 if piece.color == "white" else -1.0
+            mid_score += sign * outpost_bonus
+            end_score += sign * (outpost_bonus * 0.5)
     return mid_score, end_score
 
 
