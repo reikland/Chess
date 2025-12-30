@@ -33,6 +33,9 @@ class ChessApp:
         self.root = root
         self.root.title("Échecs Tkinter")
         self.square_size = 80
+        self.margin_x = 30
+        self.margin_top = 30
+        self.margin_bottom = 45
 
         self.game = Game()
         self.selected: Optional[Square] = None
@@ -106,8 +109,8 @@ class ChessApp:
 
         self.canvas = tk.Canvas(
             self.root,
-            width=self.square_size * 8,
-            height=self.square_size * 8,
+            width=self.square_size * 8 + self.margin_x * 2,
+            height=self.square_size * 8 + self.margin_top + self.margin_bottom,
             highlightthickness=0,
         )
         self.canvas.pack(padx=10, pady=10)
@@ -169,8 +172,8 @@ class ChessApp:
         return choices.get(selection, "Q")
 
     def on_click(self, event: tk.Event) -> None:
-        row = event.y // self.square_size
-        col = event.x // self.square_size
+        row = (event.y - self.margin_top) // self.square_size
+        col = (event.x - self.margin_x) // self.square_size
         if not (0 <= row < 8 and 0 <= col < 8):
             return
         if self.game.is_over():
@@ -277,11 +280,13 @@ class ChessApp:
         highlight = "#f4f06f"
         last_move_from = "#8ecae6"
         last_move_to = "#ffb703"
+        origin_x = self.margin_x
+        origin_y = self.margin_top
 
         for r in range(8):
             for c in range(8):
-                x1 = c * self.square_size
-                y1 = r * self.square_size
+                x1 = origin_x + c * self.square_size
+                y1 = origin_y + r * self.square_size
                 x2 = x1 + self.square_size
                 y2 = y1 + self.square_size
 
@@ -324,6 +329,51 @@ class ChessApp:
         # immediately reflect on screen instead of waiting for the Tk event
         # loop to catch up with the updated board state.
         self.canvas.update_idletasks()
+
+        label_shadow = "#f6f6f6"
+        label_fill = "#111111"
+        label_offset = 1
+        file_labels = ["a", "b", "c", "d", "e", "f", "g", "h"]
+        for r in range(8):
+            rank = 8 - r
+            cy = origin_y + r * self.square_size + self.square_size / 2
+            for x in (
+                origin_x - self.margin_x / 2,
+                origin_x + self.square_size * 8 + self.margin_x / 2,
+            ):
+                self.canvas.create_text(
+                    x + label_offset,
+                    cy + label_offset,
+                    text=str(rank),
+                    font=("Arial", 14, "bold"),
+                    fill=label_shadow,
+                )
+                self.canvas.create_text(
+                    x,
+                    cy,
+                    text=str(rank),
+                    font=("Arial", 14, "bold"),
+                    fill=label_fill,
+                )
+
+        letter_y = origin_y + self.square_size * 8 + 16
+        for c, file_letter in enumerate(file_labels):
+            cx = origin_x + c * self.square_size + self.square_size / 2
+            for y in (letter_y,):
+                self.canvas.create_text(
+                    cx + label_offset,
+                    y + label_offset,
+                    text=file_letter,
+                    font=("Arial", 14, "bold"),
+                    fill=label_shadow,
+                )
+                self.canvas.create_text(
+                    cx,
+                    y,
+                    text=file_letter,
+                    font=("Arial", 14, "bold"),
+                    fill=label_fill,
+                )
 
 
 def main() -> None:
