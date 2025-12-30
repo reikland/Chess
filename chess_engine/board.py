@@ -23,7 +23,6 @@ class Move:
     end: Square
     promotion: Optional[PieceType] = None
     is_castle: bool = False
-    is_en_passant: bool = False
 
 
 @dataclass
@@ -33,6 +32,7 @@ class MoveState:
     castling_rights: Tuple[bool, bool, bool, bool]
     en_passant_target: Optional[Square]
     moved_piece: Piece
+    was_en_passant: bool = False
 
 
 class Board:
@@ -190,7 +190,7 @@ class Board:
                         else:
                             moves.append(Move((r, c), diag))
                     if diag == self.en_passant_target:
-                        moves.append(Move((r, c), diag, is_en_passant=True))
+                        moves.append(Move((r, c), diag))
         elif piece.kind == "N":
             offsets = [
                 (-2, -1), (-2, 1), (2, -1), (2, 1),
@@ -286,6 +286,13 @@ class Board:
         if moved_piece is None:
             raise ValueError("No piece on start square")
         captured = None
+        en_passant_capture = (
+            moved_piece.kind == "P"
+            and self.en_passant_target == end
+            and start[1] != end[1]
+            and self.get_piece(end) is None
+        )
+
         if move.is_castle:
             # Move king
             self.set_piece(end, moved_piece)
@@ -300,7 +307,7 @@ class Board:
             rook = self.get_piece(rook_start)
             self.set_piece(rook_end, rook)
             self.set_piece(rook_start, None)
-        elif move.is_en_passant:
+        elif en_passant_capture:
             self.set_piece(end, moved_piece)
             self.set_piece(start, None)
             direction = -1 if moved_piece.color == "white" else 1
@@ -320,7 +327,14 @@ class Board:
         self.en_passant_target = None
         if moved_piece.kind == "P" and abs(end[0] - start[0]) == 2:
             self.en_passant_target = ((start[0] + end[0]) // 2, start[1])
-        state = MoveState(move, captured, prev_castling, prev_en_passant, moved_piece)
+        state = MoveState(
+            move,
+            captured,
+            prev_castling,
+            prev_en_passant,
+            moved_piece,
+            en_passant_capture,
+        )
         self.history.append(state)
         return state
 
@@ -335,6 +349,8 @@ class Board:
         self.en_passant_target = state.en_passant_target
         self.castling_rights = state.castling_rights
 
+        en_passant_capture = state.was_en_passant
+
         if move.is_castle:
             self.set_piece(start, moved_piece)
             self.set_piece(end, None)
@@ -347,7 +363,7 @@ class Board:
             rook = self.get_piece(rook_end)
             self.set_piece(rook_start, rook)
             self.set_piece(rook_end, None)
-        elif move.is_en_passant:
+        elif en_passant_capture:
             self.set_piece(start, moved_piece)
             self.set_piece(end, None)
             direction = -1 if moved_piece.color == "white" else 1

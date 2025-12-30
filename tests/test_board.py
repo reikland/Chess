@@ -22,8 +22,13 @@ def test_en_passant_generation():
 
     board.apply_move(Move(Board.algebraic_to_square("d7"), Board.algebraic_to_square("d5")))
     moves = board.generate_legal_moves("white")
-    ep_moves = [m for m in moves if m.is_en_passant]
-    assert any(m.start == Board.algebraic_to_square("e5") and m.end == Board.algebraic_to_square("d6") for m in ep_moves)
+    ep_moves = [
+        m
+        for m in moves
+        if m.start == Board.algebraic_to_square("e5")
+        and m.end == Board.algebraic_to_square("d6")
+    ]
+    assert ep_moves
 
 
 def test_en_passant_capture_removes_pawn():
@@ -36,7 +41,12 @@ def test_en_passant_capture_removes_pawn():
     board.set_piece(Board.algebraic_to_square("d7"), Piece("P", "black"))
 
     board.apply_move(Move(Board.algebraic_to_square("d7"), Board.algebraic_to_square("d5")))
-    ep_move = next(m for m in board.generate_legal_moves("white") if m.is_en_passant)
+    ep_move = next(
+        m
+        for m in board.generate_legal_moves("white")
+        if m.start == Board.algebraic_to_square("e5")
+        and m.end == Board.algebraic_to_square("d6")
+    )
 
     board.apply_move(ep_move)
     assert board.get_piece(Board.algebraic_to_square("d5")) is None
