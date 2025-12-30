@@ -99,6 +99,68 @@ class Board:
                     return (r, c)
         return None
 
+    def _castling_path_is_safe(self, color: Color, kingside: bool) -> bool:
+        """Return whether the king can legally castle through the target files.
+
+        Assumptions:
+        - The king of ``color`` is on its original square and it is ``color`` to move.
+        - ``self.castling_rights`` already reflects whether the rook and king have
+          moved; this helper only validates board state and attacked squares.
+        """
+
+        if self.in_check(color):
+            return False
+
+        row = 7 if color == "white" else 0
+        empty_squares = [(row, 5), (row, 6)] if kingside else [(row, 3), (row, 2)]
+        target_files = [5, 6] if kingside else [3, 2]
+
+        rook_file = 7 if kingside else 0
+        rook = self.get_piece((row, rook_file))
+        if not rook or rook.kind != "R" or rook.color != color:
+            return False
+
+        if any(self.get_piece(square) for square in empty_squares):
+            return False
+
+        opponent = "black" if color == "white" else "white"
+        for file in target_files:
+            if self.is_square_attacked((row, file), opponent):
+                return False
+        return True
+
+    def _resolve_en_passant_capture(self, move: Move, moved_piece: Piece) -> Optional[Piece]:
+        """Execute an en-passant capture and return the captured pawn.
+
+        Assumptions:
+        - ``move.is_en_passant`` is ``True`` and the move has already been deemed
+          legal (including the presence of the en-passant target square).
+        - ``moved_piece`` is the pawn performing the capture and matches
+          ``move.start``.
+        """
+
+        captured_square = (move.start[0], move.end[1])
+        captured = self.get_piece(captured_square)
+        self.set_piece(captured_square, None)
+        self.set_piece(move.end, moved_piece)
+        self.set_piece(move.start, None)
+        return captured
+
+    def _move_puts_self_in_check(self, move: Move, color: Color) -> bool:
+        """Return True if applying ``move`` leaves ``color`` in check.
+
+        Assumptions:
+        - It is ``color`` to move and ``move`` is a pseudo-legal move produced by
+          this board (piece presence has been validated).
+        - ``self.in_check`` accurately reports check, including invalid positions
+          where the king is missing.
+        """
+
+        self.apply_move(move)
+        in_check = self.in_check(color)
+        self.undo()
+        return in_check
+
     def is_square_attacked(self, square: Square, by_color: Color) -> bool:
         r, c = square
         direction = 1 if by_color == "white" else -1
@@ -238,20 +300,19 @@ class Board:
                             moves.append(Move((r, c), (nr, nc)))
             # Castling
             wk, wq, bk, bq = self.castling_rights
-            if color == "white" and not self.in_check("white"):
-                # Kingside
-                if wk and not self.get_piece((7, 5)) and not self.get_piece((7, 6)):
-                    if not self.is_square_attacked((7, 5), "black") and not self.is_square_attacked((7, 6), "black"):
-                        moves.append(Move((7, 4), (7, 6), is_castle=True))
-                if wq and not self.get_piece((7, 1)) and not self.get_piece((7, 2)) and not self.get_piece((7, 3)):
-                    if not self.is_square_attacked((7, 3), "black") and not self.is_square_attacked((7, 2), "black"):
+            if color == "white":
+                if wk and self._castling_path_is_safe("white", kingside=True):
+                    moves.append(Move((7, 4), (7, 6), is_castle=True))
+                if wq:
+                    path_clear = not self.get_piece((7, 1)) and not self.get_piece((7, 2)) and not self.get_piece((7, 3))
+                    if path_clear and self._castling_path_is_safe("white", kingside=False):
                         moves.append(Move((7, 4), (7, 2), is_castle=True))
-            if color == "black" and not self.in_check("black"):
-                if bk and not self.get_piece((0, 5)) and not self.get_piece((0, 6)):
-                    if not self.is_square_attacked((0, 5), "white") and not self.is_square_attacked((0, 6), "white"):
-                        moves.append(Move((0, 4), (0, 6), is_castle=True))
-                if bq and not self.get_piece((0, 1)) and not self.get_piece((0, 2)) and not self.get_piece((0, 3)):
-                    if not self.is_square_attacked((0, 3), "white") and not self.is_square_attacked((0, 2), "white"):
+            if color == "black":
+                if bk and self._castling_path_is_safe("black", kingside=True):
+                    moves.append(Move((0, 4), (0, 6), is_castle=True))
+                if bq:
+                    path_clear = not self.get_piece((0, 1)) and not self.get_piece((0, 2)) and not self.get_piece((0, 3))
+                    if path_clear and self._castling_path_is_safe("black", kingside=False):
                         moves.append(Move((0, 4), (0, 2), is_castle=True))
         return moves
 
@@ -311,11 +372,7 @@ class Board:
             self.set_piece(rook_end, rook)
             self.set_piece(rook_start, None)
         elif move.is_en_passant:
-            captured_square = (start[0], end[1])
-            captured = self.get_piece(captured_square)
-            self.set_piece(captured_square, None)
-            self.set_piece(end, moved_piece)
-            self.set_piece(start, None)
+            captured = self._resolve_en_passant_capture(move, moved_piece)
         else:
             captured = self.get_piece(end)
             self.set_piece(end, moved_piece)
@@ -376,10 +433,8 @@ class Board:
                 piece = self.board[r][c]
                 if piece and piece.color == color:
                     for move in self._generate_pseudo_moves_for_piece((r, c), piece):
-                        self.apply_move(move)
-                        if not self.in_check(color):
+                        if not self._move_puts_self_in_check(move, color):
                             moves.append(move)
-                        self.undo()
         return moves
 
     def __str__(self) -> str:
