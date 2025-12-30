@@ -204,3 +204,70 @@ def test_missing_king_counts_as_check():
     board.set_piece(Board.algebraic_to_square("e8"), Piece("K", "black"))
 
     assert board.in_check("white")
+
+
+def test_castling_forbidden_if_path_attacked():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (True, True, False, False)
+    board.set_piece(Board.algebraic_to_square("e1"), Piece("K", "white"))
+    board.set_piece(Board.algebraic_to_square("h1"), Piece("R", "white"))
+    board.set_piece(Board.algebraic_to_square("e8"), Piece("K", "black"))
+    board.set_piece(Board.algebraic_to_square("f8"), Piece("R", "black"))
+
+    moves = board.generate_legal_moves("white")
+
+    assert not any(
+        m.is_castle and m.end == Board.algebraic_to_square("g1") for m in moves
+    )
+
+
+def test_promotion_not_allowed_if_king_would_be_in_check():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (False, False, False, False)
+    board.set_piece(Board.algebraic_to_square("e1"), Piece("K", "white"))
+    board.set_piece(Board.algebraic_to_square("h8"), Piece("K", "black"))
+    board.set_piece(Board.algebraic_to_square("e7"), Piece("P", "white"))
+    board.set_piece(Board.algebraic_to_square("e8"), Piece("R", "black"))
+    board.set_piece(Board.algebraic_to_square("f8"), Piece("N", "black"))
+
+    moves = board.generate_legal_moves("white")
+
+    assert not any(
+        m.start == Board.algebraic_to_square("e7")
+        and m.end == Board.algebraic_to_square("f8")
+        and m.promotion
+        for m in moves
+    )
+
+
+def test_en_passant_blocked_if_it_reveals_check():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (False, False, False, False)
+    board.set_piece(Board.algebraic_to_square("e1"), Piece("K", "white"))
+    board.set_piece(Board.algebraic_to_square("h8"), Piece("K", "black"))
+    board.set_piece(Board.algebraic_to_square("e5"), Piece("P", "white"))
+    board.set_piece(Board.algebraic_to_square("d7"), Piece("P", "black"))
+    board.set_piece(Board.algebraic_to_square("e8"), Piece("R", "black"))
+
+    board.apply_move(
+        Move(Board.algebraic_to_square("d7"), Board.algebraic_to_square("d5"))
+    )
+
+    moves = board.generate_legal_moves("white")
+
+    assert all(not m.is_en_passant for m in moves)
+
+
+def test_no_moves_generated_without_king():
+    board = Board(setup=False)
+    board.clear()
+    board.castling_rights = (False, False, False, False)
+    board.set_piece(Board.algebraic_to_square("a1"), Piece("R", "white"))
+    board.set_piece(Board.algebraic_to_square("h8"), Piece("K", "black"))
+
+    moves = board.generate_legal_moves("white")
+
+    assert moves == []
