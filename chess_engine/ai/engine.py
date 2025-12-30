@@ -19,7 +19,7 @@ from chess_engine.transposition import (
     zobrist_hash,
 )
 
-QUIESCENCE_DEPTH = 4
+QUIESCENCE_DEPTH = 2
 
 
 MobilityCounts = Optional[Dict[Color, Union[int, Iterable[Move]]]]
@@ -113,6 +113,26 @@ def _terminal_score(
     return 0.0
 
 
+def _is_quiescence_candidate(
+    board: Board, move: Move, next_color: Color
+) -> tuple[bool, tuple[int, int, int, int]]:
+    """Return whether ``move`` should be searched in quiescence plus its MVV-LVA score."""
+
+    order_score = _move_order_score(board, move)
+
+    if order_score[0]:  # capture
+        # Always keep good or neutral captures; drop obviously losing trades.
+        return order_score[1] >= 0, order_score
+
+    if move.promotion:
+        return True, order_score
+
+    board.apply_move(move)
+    gives_check = board.in_check(next_color)
+    board.undo()
+    return gives_check, order_score
+
+
 def _quiescence(
     board: Board,
     current_color: Color,
@@ -177,21 +197,16 @@ def _quiescence(
 
     next_color: Color = "black" if current_color == "white" else "white"
 
-    noisy_moves: list[Move] = []
+    noisy_moves: list[tuple[Move, tuple[int, int, int, int]]] = []
     for move in legal_moves:
-        if _captured_piece(board, move) or move.promotion:
-            noisy_moves.append(move)
-            continue
-        board.apply_move(move)
-        gives_check = board.in_check(next_color)
-        board.undo()
-        if gives_check:
-            noisy_moves.append(move)
+        keep_move, order_score = _is_quiescence_candidate(board, move, next_color)
+        if keep_move:
+            noisy_moves.append((move, order_score))
 
     if not noisy_moves:
         return value
 
-    for move in sorted(noisy_moves, key=lambda m: _move_order_score(board, m), reverse=True):
+    for move, _ in sorted(noisy_moves, key=lambda item: item[1], reverse=True):
         board.apply_move(move)
         score = _quiescence(
             board,
@@ -510,6 +525,7 @@ def choose_move(
     max_nodes: Optional[int] = None,
     time_limit_ms: Optional[int] = None,
     transposition_table: Optional[TranspositionTable] = None,
+    diagnostics: Optional[dict[str, float]] = None,
 ) -> Optional[Move]:
     """Return the best move for ``color`` using minimax with alpha-beta pruning.
 
@@ -520,10 +536,15 @@ def choose_move(
     swings before returning an evaluation.
     ``time_limit_ms`` offers a soft wallclock budget for the iterative deepening
     search, returning the best move found so far when the timer elapses.
+    When ``diagnostics`` is provided, it will be populated with search metrics such
+    as explored nodes, elapsed time, nodes per second, and the final evaluation
+    score from the perspective of ``color``.
     """
 
     killer_moves: Dict[int, list[Move]] = {}
     history_scores: Dict[Tuple, int] = {}
+
+    start_time = time.time()
 
     legal_moves = sorted(
         board.generate_legal_moves(color),
@@ -622,5 +643,16 @@ def choose_move(
             break
         if deadline is not None and time.time() >= deadline:
             break
+
+    if diagnostics is not None:
+        elapsed = max(time.time() - start_time, 1e-9)
+        diagnostics.update(
+            {
+                "nodes": float(node_counter["count"]),
+                "elapsed_s": elapsed,
+                "nodes_per_s": node_counter["count"] / elapsed,
+                "score": None if best_move is None else best_score,
+            }
+        )
 
     return best_move
