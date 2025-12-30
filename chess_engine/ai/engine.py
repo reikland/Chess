@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 from chess_engine.board import Board, Color, Move, Piece
 from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
@@ -30,14 +30,36 @@ def _captured_piece(board: Board, move: Move) -> Optional[Piece]:
     return board.get_piece(move.end)
 
 
-def _move_order_score(board: Board, move: Move) -> tuple[int, int]:
+def _move_order_score(
+    board: Board,
+    move: Move,
+    killer_moves: Optional[Dict[int, list[Move]]] = None,
+    history_scores: Optional[Dict[Tuple, int]] = None,
+    depth: int = 0,
+) -> tuple[int, int, int, int]:
     captured = _captured_piece(board, move)
     mover = board.get_piece(move.start)
     captured_value = PieceValue.get(captured.kind, 0) if captured else 0
     mover_value = PieceValue.get(mover.kind, 0) if mover else 0
     capture_score = captured_value * 10 - mover_value if captured else 0
     promotion_bonus = PieceValue.get(move.promotion, 0) if move.promotion else 0
-    return (1 if captured else 0, capture_score + promotion_bonus)
+
+    killer_bonus = 0
+    if killer_moves:
+        killers = killer_moves.get(depth, [])
+        killer_bonus = 1 if move in killers else 0
+
+    history_score = 0
+    if history_scores is not None:
+        history_key = (move.start, move.end, move.promotion)
+        history_score = history_scores.get(history_key, 0)
+
+    return (
+        1 if captured else 0,
+        capture_score + promotion_bonus,
+        killer_bonus,
+        history_score,
+    )
 
 
 def evaluate_board(board: Board) -> float:
@@ -161,6 +183,8 @@ def _minimax(
     max_nodes: Optional[int],
     node_counter: dict[str, int],
     transposition_table: Optional[TranspositionTable],
+    killer_moves: Dict[int, list[Move]],
+    history_scores: Dict[Tuple, int],
 ) -> float:
     node_counter["count"] += 1
     if max_nodes is not None and node_counter["count"] > max_nodes:
@@ -184,7 +208,13 @@ def _minimax(
 
     legal_moves = sorted(
         board.generate_legal_moves(current_color),
-        key=lambda move: _move_order_score(board, move),
+        key=lambda move: _move_order_score(
+            board,
+            move,
+            killer_moves=killer_moves,
+            history_scores=history_scores,
+            depth=depth,
+        ),
         reverse=True,
     )
     if not legal_moves:
@@ -214,6 +244,7 @@ def _minimax(
     if maximizing:
         value = float("-inf")
         for move in legal_moves:
+            is_capture = _captured_piece(board, move) is not None
             board.apply_move(move)
             score = _minimax(
                 board,
@@ -225,17 +256,29 @@ def _minimax(
                 max_nodes,
                 node_counter,
                 transposition_table,
+                killer_moves,
+                history_scores,
             )
             board.undo()
             if score > value:
                 value = score
                 best_move_found = move
+                if not is_capture:
+                    history_key = (move.start, move.end, move.promotion)
+                    history_scores[history_key] = history_scores.get(history_key, 0) + depth * depth
             alpha = max(alpha, value)
             if alpha >= beta:
+                if not is_capture:
+                    killers = killer_moves.setdefault(depth, [])
+                    if move in killers:
+                        killers.remove(move)
+                    killers.append(move)
+                    killer_moves[depth] = killers[-2:]
                 break
     else:
         value = float("inf")
         for move in legal_moves:
+            is_capture = _captured_piece(board, move) is not None
             board.apply_move(move)
             score = _minimax(
                 board,
@@ -247,13 +290,24 @@ def _minimax(
                 max_nodes,
                 node_counter,
                 transposition_table,
+                killer_moves,
+                history_scores,
             )
             board.undo()
             if score < value:
                 value = score
                 best_move_found = move
+                if not is_capture:
+                    history_key = (move.start, move.end, move.promotion)
+                    history_scores[history_key] = history_scores.get(history_key, 0) + depth * depth
             beta = min(beta, value)
             if beta <= alpha:
+                if not is_capture:
+                    killers = killer_moves.setdefault(depth, [])
+                    if move in killers:
+                        killers.remove(move)
+                    killers.append(move)
+                    killer_moves[depth] = killers[-2:]
                 break
 
     if transposition_table and tt_key is not None:
@@ -282,9 +336,18 @@ def choose_move(
     swings before returning an evaluation.
     """
 
+    killer_moves: Dict[int, list[Move]] = {}
+    history_scores: Dict[Tuple, int] = {}
+
     legal_moves = sorted(
         board.generate_legal_moves(color),
-        key=lambda move: _move_order_score(board, move),
+        key=lambda move: _move_order_score(
+            board,
+            move,
+            killer_moves=killer_moves,
+            history_scores=history_scores,
+            depth=depth,
+        ),
         reverse=True,
     )
     if not legal_moves:
@@ -303,6 +366,18 @@ def choose_move(
         depth_best_move: Optional[Move] = None
         depth_best_score = float("-inf")
 
+        legal_moves = sorted(
+            legal_moves,
+            key=lambda move: _move_order_score(
+                board,
+                move,
+                killer_moves=killer_moves,
+                history_scores=history_scores,
+                depth=current_depth,
+            ),
+            reverse=True,
+        )
+
         for move in legal_moves:
             if max_nodes is not None and node_counter["count"] >= max_nodes:
                 break
@@ -318,6 +393,8 @@ def choose_move(
                 max_nodes,
                 node_counter,
                 transposition_table,
+                killer_moves,
+                history_scores,
             )
             board.undo()
             if depth_best_move is None or score > depth_best_score:
@@ -327,6 +404,9 @@ def choose_move(
         if depth_best_move is not None:
             best_move = depth_best_move
             best_score = depth_best_score
+            if depth_best_move in legal_moves:
+                legal_moves.remove(depth_best_move)
+                legal_moves.insert(0, depth_best_move)
 
         if max_nodes is not None and node_counter["count"] >= max_nodes:
             break
