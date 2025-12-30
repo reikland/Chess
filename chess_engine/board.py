@@ -118,6 +118,7 @@ class MoveState:
     moved_piece: Piece
     en_passant_square: Optional[Square]
     halfmove_clock: int
+    eval_cache: Optional[Tuple[Optional[Tuple[float, float]], bool]] = None
 
 
 @dataclass
@@ -137,6 +138,8 @@ class Board:
         self.en_passant_square: Optional[Square] = None
         self.history: List[MoveState] = []
         self.halfmove_clock = 0
+        self._material_cache: Optional[Tuple[float, float]] = None
+        self._eval_dirty = True
         if setup:
             self._setup_standard()
 
@@ -170,6 +173,8 @@ class Board:
         self.en_passant_square = None
         self.history.clear()
         self.halfmove_clock = 0
+        self._material_cache = None
+        self._eval_dirty = True
 
     def get_piece(self, square: Square) -> Optional[Piece]:
         r, c = square
@@ -178,6 +183,8 @@ class Board:
     def set_piece(self, square: Square, piece: Optional[Piece]) -> None:
         r, c = square
         self.board[r][c] = piece
+        self._material_cache = None
+        self._eval_dirty = True
 
     def _ally(self, piece: Piece, color: Color) -> bool:
         return piece.color == color
@@ -465,6 +472,7 @@ class Board:
         captured = None
         prev_en_passant = self.en_passant_square
         self.en_passant_square = None
+        prev_eval_state = (self._material_cache, self._eval_dirty)
 
         if move.is_castle:
             # Move king
@@ -505,8 +513,11 @@ class Board:
             moved_piece,
             prev_en_passant,
             prev_halfmove,
+            prev_eval_state,
         )
         self.history.append(state)
+        self._material_cache = None
+        self._eval_dirty = True
         return state
 
     def undo(self) -> Optional[MoveState]:
@@ -519,6 +530,11 @@ class Board:
         self.castling_rights = state.castling_rights
         self.en_passant_square = state.en_passant_square
         self.halfmove_clock = state.halfmove_clock
+        if state.eval_cache is not None:
+            self._material_cache, self._eval_dirty = state.eval_cache
+        else:
+            self._material_cache = None
+            self._eval_dirty = True
 
         if move.is_castle:
             self.set_piece(start, moved_piece)
@@ -649,6 +665,8 @@ class BitboardBoard:
         self.en_passant_square: Optional[Square] = None
         self.history: List[MoveState] = []
         self.halfmove_clock = 0
+        self._material_cache: Optional[Tuple[float, float]] = None
+        self._eval_dirty = True
         self.clear()
         if setup:
             self._setup_standard()
@@ -686,6 +704,8 @@ class BitboardBoard:
         self.en_passant_square = None
         self.history.clear()
         self.halfmove_clock = 0
+        self._material_cache = None
+        self._eval_dirty = True
 
     def _place_piece(self, square: Square, piece: Piece) -> None:
         idx = _square_index(square)
@@ -695,6 +715,8 @@ class BitboardBoard:
         self.pieces_by_index[idx] = piece
         if piece.kind == "K":
             self.king_positions[piece.color] = square
+        self._material_cache = None
+        self._eval_dirty = True
 
     def _remove_piece(self, square: Square, piece: Piece) -> None:
         idx = _square_index(square)
@@ -704,6 +726,8 @@ class BitboardBoard:
         self.pieces_by_index[idx] = None
         if piece.kind == "K" and self.king_positions.get(piece.color) == square:
             self.king_positions[piece.color] = None
+        self._material_cache = None
+        self._eval_dirty = True
 
     def _setup_standard(self) -> None:
         pieces = "RNBQKBNR"
