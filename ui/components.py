@@ -8,7 +8,7 @@ import chess
 import streamlit as st
 
 from chess_engine.ai import choose_move
-from chess_engine.board import Board, Move as EngineMove, Piece
+from chess_engine.board import BitboardBoard, Board, Move as EngineMove, Piece
 from services.storage import (
     export_fen,
     export_pgn,
@@ -450,7 +450,7 @@ def _load_game_state(game_state: dict) -> None:
 
 
 def _engine_board_from_python(board: chess.Board) -> Board:
-    engine_board = Board(setup=False)
+    engine_board = BitboardBoard(setup=False)
     engine_board.castling_rights = (
         board.has_kingside_castling_rights(chess.WHITE),
         board.has_queenside_castling_rights(chess.WHITE),

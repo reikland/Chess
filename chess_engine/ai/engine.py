@@ -6,7 +6,7 @@ import time
 
 from typing import Dict, Iterable, Optional, Tuple, Union
 
-from chess_engine.board import Board, Color, Move, Piece
+from chess_engine.board import BitboardBoard, Board, Color, Move, Piece
 from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
 from chess_engine.transposition import (
     EXACT,
@@ -27,11 +27,9 @@ MobilityCounts = Optional[Dict[Color, Union[int, Iterable[Move]]]]
 
 def _pseudo_legal_move_count(board: Board, color: Color) -> int:
     count = 0
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if piece and piece.color == color:
-                count += len(board._generate_pseudo_moves_for_piece((r, c), piece))
+    for piece, r, c in board.iter_pieces():
+        if piece.color == color:
+            count += len(board._generate_pseudo_moves_for_piece((r, c), piece))
     return count
 
 
@@ -72,6 +70,20 @@ def _move_order_score(
     captured_value = PieceValue.get(captured.kind, 0) if captured else 0
     mover_value = PieceValue.get(mover.kind, 0) if mover else 0
     capture_score = captured_value * 10 - mover_value if captured else 0
+    development_bonus = 0
+    if mover:
+        # Encourage early development and king safety by prioritizing castling
+        if move.is_castle:
+            development_bonus += 30
+        if mover.kind in {"N", "B"}:
+            home_row = 7 if mover.color == "white" else 0
+            if move.start[0] == home_row:
+                development_bonus += 6
+        if mover.kind == "P" and move.start[1] in (3, 4):
+            # Central pawn pushes
+            development_bonus += 5
+        if mover.kind == "K" and move.end in {(7, 6), (7, 2), (0, 6), (0, 2)}:
+            development_bonus += 12
     promotion_bonus = PieceValue.get(move.promotion, 0) if move.promotion else 0
 
     killer_bonus = 0
@@ -86,7 +98,7 @@ def _move_order_score(
 
     return (
         1 if captured else 0,
-        capture_score + promotion_bonus,
+        capture_score + promotion_bonus + development_bonus,
         killer_bonus,
         history_score,
     )
@@ -562,6 +574,9 @@ def choose_move(
     as explored nodes, elapsed time, nodes per second, and the final evaluation
     score from the perspective of ``color``.
     """
+
+    if not isinstance(board, BitboardBoard):
+        board = BitboardBoard.from_board(board)
 
     killer_moves: Dict[int, list[Move]] = {}
     history_scores: Dict[Tuple, int] = {}
