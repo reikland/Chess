@@ -30,9 +30,7 @@ class MoveState:
     move: Move
     captured: Optional[Piece]
     castling_rights: Tuple[bool, bool, bool, bool]
-    en_passant_target: Optional[Square]
     moved_piece: Piece
-    was_en_passant: bool = False
 
 
 class Board:
@@ -41,7 +39,6 @@ class Board:
     def __init__(self, setup: bool = True) -> None:
         self.board: List[List[Optional[Piece]]] = [[None for _ in range(8)] for _ in range(8)]
         self.castling_rights = (True, True, True, True) if setup else (False, False, False, False)
-        self.en_passant_target: Optional[Square] = None
         self.history: List[MoveState] = []
         if setup:
             self._setup_standard()
@@ -74,7 +71,6 @@ class Board:
     def clear(self) -> None:
         self.board = [[None for _ in range(8)] for _ in range(8)]
         self.castling_rights = (False, False, False, False)
-        self.en_passant_target = None
         self.history.clear()
 
     def get_piece(self, square: Square) -> Optional[Piece]:
@@ -189,8 +185,6 @@ class Board:
                                 moves.append(Move((r, c), diag, promotion=promo))
                         else:
                             moves.append(Move((r, c), diag))
-                    if diag == self.en_passant_target:
-                        moves.append(Move((r, c), diag))
         elif piece.kind == "N":
             offsets = [
                 (-2, -1), (-2, 1), (2, -1), (2, 1),
@@ -286,12 +280,6 @@ class Board:
         if moved_piece is None:
             raise ValueError("No piece on start square")
         captured = None
-        en_passant_capture = (
-            moved_piece.kind == "P"
-            and self.en_passant_target == end
-            and start[1] != end[1]
-            and self.get_piece(end) is None
-        )
 
         if move.is_castle:
             # Move king
@@ -307,13 +295,6 @@ class Board:
             rook = self.get_piece(rook_start)
             self.set_piece(rook_end, rook)
             self.set_piece(rook_start, None)
-        elif en_passant_capture:
-            self.set_piece(end, moved_piece)
-            self.set_piece(start, None)
-            direction = -1 if moved_piece.color == "white" else 1
-            captured_square = (end[0] - direction, end[1])
-            captured = self.get_piece(captured_square)
-            self.set_piece(captured_square, None)
         else:
             captured = self.get_piece(end)
             self.set_piece(end, moved_piece)
@@ -322,18 +303,11 @@ class Board:
             self.set_piece(end, Piece(move.promotion, moved_piece.color))
         prev_castling = self.castling_rights
         self.castling_rights = self._update_castling_rights_after_move(move, moved_piece, captured)
-        # Update en passant target
-        prev_en_passant = self.en_passant_target
-        self.en_passant_target = None
-        if moved_piece.kind == "P" and abs(end[0] - start[0]) == 2:
-            self.en_passant_target = ((start[0] + end[0]) // 2, start[1])
         state = MoveState(
             move,
             captured,
             prev_castling,
-            prev_en_passant,
             moved_piece,
-            en_passant_capture,
         )
         self.history.append(state)
         return state
@@ -345,11 +319,7 @@ class Board:
         move = state.move
         start, end = move.start, move.end
         moved_piece = state.moved_piece
-        # Revert en-passant target and castling rights
-        self.en_passant_target = state.en_passant_target
         self.castling_rights = state.castling_rights
-
-        en_passant_capture = state.was_en_passant
 
         if move.is_castle:
             self.set_piece(start, moved_piece)
@@ -363,12 +333,6 @@ class Board:
             rook = self.get_piece(rook_end)
             self.set_piece(rook_start, rook)
             self.set_piece(rook_end, None)
-        elif en_passant_capture:
-            self.set_piece(start, moved_piece)
-            self.set_piece(end, None)
-            direction = -1 if moved_piece.color == "white" else 1
-            captured_square = (end[0] + direction, end[1])
-            self.set_piece(captured_square, state.captured)
         else:
             self.set_piece(start, moved_piece)
             self.set_piece(end, state.captured)
