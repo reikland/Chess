@@ -14,7 +14,7 @@ from chess_engine.transposition import (
 
 
 def test_store_and_probe_exact_entry():
-    table = TranspositionTable(size=8)
+    table = TranspositionTable(size=8, bucket_size=2)
     key = 42
     move = Move((0, 0), (0, 1))
 
@@ -27,7 +27,7 @@ def test_store_and_probe_exact_entry():
 
 
 def test_collision_prefers_deeper_entry():
-    table = TranspositionTable(size=1)
+    table = TranspositionTable(size=1, bucket_size=1)
     primary_key = 1
     colliding_key = 1 + table.size  # Same index as ``primary_key``
 
@@ -43,7 +43,7 @@ def test_collision_prefers_deeper_entry():
 
 
 def test_update_replaces_shallower_entry():
-    table = TranspositionTable(size=4)
+    table = TranspositionTable(size=4, bucket_size=2)
     key = 99
 
     store(table, key, depth=1, score=0.5, flag=LOWERBOUND, best_move=None)
