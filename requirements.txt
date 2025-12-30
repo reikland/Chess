@@ -1,2 +1,1 @@
-streamlit>=1.34
-python-chess>=1.999
+# Aucun paquet externe requis pour l'application Tkinter.
