@@ -1,11 +1,91 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 Color = str  # "white" or "black"
 PieceType = str  # K, Q, R, B, N, P
 Square = Tuple[int, int]
+
+
+def _square_index(square: Square) -> int:
+    r, c = square
+    return r * 8 + c
+
+
+def _bit(square: Square) -> int:
+    return 1 << _square_index(square)
+
+
+def _in_bounds(square: Square) -> bool:
+    r, c = square
+    return 0 <= r < 8 and 0 <= c < 8
+
+
+# Precomputed attack tables
+KNIGHT_ATTACKS: List[int] = [0] * 64
+KING_ATTACKS: List[int] = [0] * 64
+PAWN_ATTACKS: Dict[Color, List[int]] = {"white": [0] * 64, "black": [0] * 64}
+SLIDING_RAYS: List[List[List[int]]] = [[[] for _ in range(8)] for _ in range(64)]
+
+
+def _precompute_attacks() -> None:
+    knight_offsets = [
+        (-2, -1), (-2, 1), (2, -1), (2, 1),
+        (-1, -2), (-1, 2), (1, -2), (1, 2),
+    ]
+    king_offsets = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1), (0, 1),
+        (1, -1), (1, 0), (1, 1),
+    ]
+    pawn_directions = {"white": 1, "black": -1}
+
+    for r in range(8):
+        for c in range(8):
+            idx = _square_index((r, c))
+
+            # Knight
+            attacks = 0
+            for dr, dc in knight_offsets:
+                target = (r + dr, c + dc)
+                if _in_bounds(target):
+                    attacks |= _bit(target)
+            KNIGHT_ATTACKS[idx] = attacks
+
+            # King
+            attacks = 0
+            for dr, dc in king_offsets:
+                target = (r + dr, c + dc)
+                if _in_bounds(target):
+                    attacks |= _bit(target)
+            KING_ATTACKS[idx] = attacks
+
+            # Pawns
+            for color, direction in pawn_directions.items():
+                attacks = 0
+                for dc in (-1, 1):
+                    target = (r + direction, c + dc)
+                    if _in_bounds(target):
+                        attacks |= _bit(target)
+                PAWN_ATTACKS[color][idx] = attacks
+
+            # Sliding rays
+            directions = [
+                (-1, 0), (1, 0), (0, -1), (0, 1),
+                (-1, -1), (-1, 1), (1, -1), (1, 1),
+            ]
+            for d_idx, (dr, dc) in enumerate(directions):
+                path: List[int] = []
+                nr, nc = r + dr, c + dc
+                while _in_bounds((nr, nc)):
+                    path.append(_square_index((nr, nc)))
+                    nr += dr
+                    nc += dc
+                SLIDING_RAYS[idx][d_idx] = path
+
+
+_precompute_attacks()
 
 
 @dataclass
@@ -36,6 +116,14 @@ class MoveState:
     halfmove_clock: int
 
 
+@dataclass
+class BoardState:
+    piece_bitboards: Dict[Color, Dict[PieceType, int]]
+    occupancy: int
+    pieces_by_index: List[Optional[Piece]]
+    king_positions: Dict[Color, Optional[Square]]
+
+
 class Board:
     files = "abcdefgh"
 
@@ -50,8 +138,7 @@ class Board:
 
     @staticmethod
     def in_bounds(square: Square) -> bool:
-        r, c = square
-        return 0 <= r < 8 and 0 <= c < 8
+        return _in_bounds(square)
 
     @classmethod
     def algebraic_to_square(cls, name: str) -> Square:
@@ -101,6 +188,29 @@ class Board:
                 if piece and piece.kind == "K" and piece.color == color:
                     return (r, c)
         return None
+
+    def _board_state(self) -> BoardState:
+        piece_bitboards: Dict[Color, Dict[PieceType, int]] = {
+            "white": {"P": 0, "N": 0, "B": 0, "R": 0, "Q": 0, "K": 0},
+            "black": {"P": 0, "N": 0, "B": 0, "R": 0, "Q": 0, "K": 0},
+        }
+        occupancy = 0
+        pieces_by_index: List[Optional[Piece]] = [None] * 64
+        king_positions: Dict[Color, Optional[Square]] = {"white": None, "black": None}
+
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece:
+                    idx = _square_index((r, c))
+                    bit = 1 << idx
+                    occupancy |= bit
+                    piece_bitboards[piece.color][piece.kind] |= bit
+                    pieces_by_index[idx] = piece
+                    if piece.kind == "K":
+                        king_positions[piece.color] = (r, c)
+
+        return BoardState(piece_bitboards, occupancy, pieces_by_index, king_positions)
 
     def _castling_path_is_safe(self, color: Color, kingside: bool) -> bool:
         """Return whether the king can legally castle through the target files.
@@ -160,72 +270,64 @@ class Board:
         """
 
         self.apply_move(move)
-        in_check = self.in_check(color)
+        state = self._board_state()
+        in_check = self.in_check(color, state)
         self.undo()
         return in_check
 
-    def is_square_attacked(self, square: Square, by_color: Color) -> bool:
-        r, c = square
-        direction = 1 if by_color == "white" else -1
-        # Pawn attacks
-        for dc in (-1, 1):
-            pr, pc = r + direction, c + dc
-            if self.in_bounds((pr, pc)):
-                piece = self.get_piece((pr, pc))
-                if piece and piece.color == by_color and piece.kind == "P":
-                    return True
-        # Knight attacks
-        knight_moves = [
-            (-2, -1), (-2, 1), (2, -1), (2, 1),
-            (-1, -2), (-1, 2), (1, -2), (1, 2),
-        ]
-        for dr, dc in knight_moves:
-            nr, nc = r + dr, c + dc
-            if self.in_bounds((nr, nc)):
-                piece = self.get_piece((nr, nc))
-                if piece and piece.color == by_color and piece.kind == "N":
-                    return True
-        # Sliding pieces
-        directions = [
-            (-1, 0), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (-1, 1), (1, -1), (1, 1),
-        ]
-        for dr, dc in directions:
-            nr, nc = r + dr, c + dc
-            while self.in_bounds((nr, nc)):
-                piece = self.get_piece((nr, nc))
-                if piece:
-                    if piece.color == by_color:
-                        if piece.kind == "Q":
-                            return True
-                        if piece.kind == "R" and (dr == 0 or dc == 0):
-                            return True
-                        if piece.kind == "B" and dr != 0 and dc != 0:
-                            return True
-                    break
-                nr += dr
-                nc += dc
-        # King attacks
-        for dr in (-1, 0, 1):
-            for dc in (-1, 0, 1):
-                if dr == dc == 0:
+    def _sliding_attack(self, square_idx: int, by_color: Color, state: BoardState) -> bool:
+        pieces = state.piece_bitboards[by_color]
+        rook_like = pieces["R"] | pieces["Q"]
+        bishop_like = pieces["B"] | pieces["Q"]
+
+        for direction_idx, ray in enumerate(SLIDING_RAYS[square_idx]):
+            uses_rook = direction_idx < 4
+            uses_bishop = direction_idx >= 4
+            target_mask = rook_like if uses_rook else bishop_like
+            if not target_mask:
+                continue
+            for target_idx in ray:
+                target_bit = 1 << target_idx
+                if not state.occupancy & target_bit:
                     continue
-                nr, nc = r + dr, c + dc
-                if self.in_bounds((nr, nc)):
-                    piece = self.get_piece((nr, nc))
-                    if piece and piece.color == by_color and piece.kind == "K":
+                piece = state.pieces_by_index[target_idx]
+                if piece and piece.color == by_color:
+                    if uses_rook and piece.kind in {"R", "Q"}:
                         return True
+                    if uses_bishop and piece.kind in {"B", "Q"}:
+                        return True
+                break
         return False
 
-    def in_check(self, color: Color) -> bool:
-        king_pos = self._king_position(color)
+    def is_square_attacked(self, square: Square, by_color: Color, state: Optional[BoardState] = None) -> bool:
+        state = state or self._board_state()
+        idx = _square_index(square)
+        pieces = state.piece_bitboards[by_color]
+
+        # Pawn, knight, and king attacks via precomputed masks
+        if PAWN_ATTACKS[by_color][idx] & pieces["P"]:
+            return True
+        if KNIGHT_ATTACKS[idx] & pieces["N"]:
+            return True
+        if KING_ATTACKS[idx] & pieces["K"]:
+            return True
+
+        # Sliding attacks
+        if self._sliding_attack(idx, by_color, state):
+            return True
+
+        return False
+
+    def in_check(self, color: Color, state: Optional[BoardState] = None) -> bool:
+        state = state or self._board_state()
+        king_pos = state.king_positions.get(color)
         # A missing king indicates an invalid position where the player is
         # effectively checkmated; treat it as being in check to avoid
         # continuing the game with a captured king.
         if king_pos is None:
             return True
         opponent = "black" if color == "white" else "white"
-        return self.is_square_attacked(king_pos, opponent)
+        return self.is_square_attacked(king_pos, opponent, state)
 
     def _generate_pseudo_moves_for_piece(self, position: Square, piece: Piece) -> List[Move]:
         r, c = position
