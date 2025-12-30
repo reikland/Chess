@@ -18,27 +18,50 @@ class TTEntry:
     score: float
     flag: str
     best_move: Optional[Move]
+    age: int = 0
 
 
 class TranspositionTable:
-    def __init__(self, size: int = 1 << 15) -> None:
+    def __init__(self, size: int = 1 << 18, bucket_size: int = 4) -> None:
         self.size = size
-        self._table: list[Optional[TTEntry]] = [None for _ in range(size)]
+        self.bucket_size = bucket_size
+        self._table: list[list[TTEntry]] = [[] for _ in range(size)]
+        self._counter = 0
 
     def _index(self, key: int) -> int:
         return key % self.size
 
     def probe(self, key: int) -> Optional[TTEntry]:
-        entry = self._table[self._index(key)]
-        if entry and entry.key == key:
-            return entry
+        bucket = self._table[self._index(key)]
+        for entry in bucket:
+            if entry.key == key:
+                return entry
         return None
 
     def store(self, entry: TTEntry) -> None:
         index = self._index(entry.key)
-        existing = self._table[index]
-        if existing is None or entry.depth >= existing.depth or existing.key == entry.key:
-            self._table[index] = entry
+        bucket = self._table[index]
+        entry.age = self._counter
+        self._counter += 1
+
+        for idx, existing in enumerate(bucket):
+            if existing.key == entry.key:
+                if entry.depth >= existing.depth:
+                    bucket[idx] = entry
+                return
+
+        if len(bucket) < self.bucket_size:
+            bucket.append(entry)
+            return
+
+        replacement_idx = min(
+            range(len(bucket)),
+            key=lambda i: (bucket[i].depth, bucket[i].age),
+        )
+        weakest = bucket[replacement_idx]
+        if entry.depth < weakest.depth:
+            return
+        bucket[replacement_idx] = entry
 
 
 def _init_zobrist() -> tuple[dict[tuple[Color, str], list[int]], list[int], list[int], int]:

@@ -186,6 +186,19 @@ def _material_and_position(board: Board) -> Tuple[float, float]:
     return mid_score, end_score
 
 
+def _material_and_position_cached(board: Board) -> Tuple[float, float]:
+    cache = getattr(board, "_material_cache", None)
+    dirty = getattr(board, "_eval_dirty", True)
+    if cache is not None and not dirty:
+        return cache
+
+    mid_score, end_score = _material_and_position(board)
+    if hasattr(board, "_material_cache"):
+        board._material_cache = (mid_score, end_score)
+        board._eval_dirty = False
+    return mid_score, end_score
+
+
 def _file_has_pawn(board: Board, file_index: int, color: Color) -> bool:
     return any(piece.kind == "P" and piece.color == color for piece, _ in board.file_pieces(file_index))
 
@@ -350,7 +363,7 @@ def _development_and_castling(board: Board) -> Tuple[float, float]:
 
 def evaluate_board(board: Board) -> float:
     phase = _game_phase(board)
-    mid_score, end_score = _material_and_position(board)
+    mid_score, end_score = _material_and_position_cached(board)
     king_mid, king_end = king_safety(board)
     pawn_score = pawn_structure(board)
     minor_activity = _minor_centralization(board)
