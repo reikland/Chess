@@ -45,3 +45,24 @@ def test_passed_pawn_beats_doubled_isolated_structure():
     assert pawn_structure(doubled) < 0
     assert pawn_structure(passed) > 0
     assert evaluate_board(passed) > evaluate_board(doubled)
+
+
+def test_mobility_and_tables_reward_open_center():
+    closed = board_from_fen("r3k2r/ppp2ppp/2np1n2/3Pp3/4P3/2N2N2/PPP2PPP/R1BQ1RK1 w kq - 0 1")
+    open_center = board_from_fen("r3k2r/ppp2ppp/2np1n2/3P4/4P3/2N2N2/PPP2PPP/R1BQ1RK1 w kq - 0 1")
+
+    assert evaluate_board(open_center) > evaluate_board(closed)
+
+
+def test_opposite_castling_exposes_king():
+    safe = board_from_fen("r3k2r/ppp2ppp/2np1n2/3Pp3/4P3/2N2N2/PPP2PPP/R1BQ1RK1 w kq - 0 1")
+    exposed = board_from_fen("2k1r2r/4pppp/2np1n2/3Pp3/4P3/2N2N2/PPP2PPP/R1BQR1K1 w - - 0 1")
+
+    assert evaluate_board(exposed) > evaluate_board(safe)
+
+
+def test_weakened_structure_penalized():
+    weak = board_from_fen("4k3/8/8/8/3pP3/3P4/3P1P2/4K3 w - - 0 1")
+    healthy = board_from_fen("4k3/8/8/8/8/3P4/3P1P2/4K3 w - - 0 1")
+
+    assert evaluate_board(healthy) > evaluate_board(weak)
