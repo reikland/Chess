@@ -118,9 +118,16 @@ def apply_theme(theme_name: str) -> None:
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 600;
-            color: var(--muted-color);
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--accent-color);
+            background: rgba(0, 0, 0, 0.06);
             border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.08);
+        }}
+
+        .chessboard .file-label {{
+            text-transform: uppercase;
         }}
     </style>
     """
