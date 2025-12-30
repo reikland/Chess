@@ -56,3 +56,24 @@ def test_king_capture_is_illegal():
 
     with pytest.raises(ValueError):
         game.make_move("e7", "e8")
+
+
+def test_fifty_move_rule_detection():
+    game = Game()
+    game.board.clear()
+    game.board.castling_rights = (False, False, False, False)
+
+    game.board.set_piece(Board.algebraic_to_square("a1"), Piece("K", "white"))
+    game.board.set_piece(Board.algebraic_to_square("h8"), Piece("K", "black"))
+    game.board.set_piece(Board.algebraic_to_square("b1"), Piece("N", "white"))
+    game.board.set_piece(Board.algebraic_to_square("g8"), Piece("N", "black"))
+
+    for _ in range(25):
+        game.make_move("b1", "a3")
+        game.make_move("g8", "h6")
+        game.make_move("a3", "b1")
+        game.make_move("h6", "g8")
+
+    assert game.board.halfmove_clock == 100
+    assert game.is_fifty_move_draw()
+    assert game.game_status() == "draw by fifty-move rule"

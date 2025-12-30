@@ -33,6 +33,7 @@ class MoveState:
     castling_rights: Tuple[bool, bool, bool, bool]
     moved_piece: Piece
     en_passant_square: Optional[Square]
+    halfmove_clock: int
 
 
 class Board:
@@ -43,6 +44,7 @@ class Board:
         self.castling_rights = (True, True, True, True) if setup else (False, False, False, False)
         self.en_passant_square: Optional[Square] = None
         self.history: List[MoveState] = []
+        self.halfmove_clock = 0
         if setup:
             self._setup_standard()
 
@@ -76,6 +78,7 @@ class Board:
         self.castling_rights = (False, False, False, False)
         self.en_passant_square = None
         self.history.clear()
+        self.halfmove_clock = 0
 
     def get_piece(self, square: Square) -> Optional[Piece]:
         r, c = square
@@ -384,12 +387,18 @@ class Board:
             self.en_passant_square = (start[0] + direction, start[1])
         prev_castling = self.castling_rights
         self.castling_rights = self._update_castling_rights_after_move(move, moved_piece, captured)
+        prev_halfmove = self.halfmove_clock
+        if moved_piece.kind == "P" or captured:
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock += 1
         state = MoveState(
             move,
             captured,
             prev_castling,
             moved_piece,
             prev_en_passant,
+            prev_halfmove,
         )
         self.history.append(state)
         return state
@@ -403,6 +412,7 @@ class Board:
         moved_piece = state.moved_piece
         self.castling_rights = state.castling_rights
         self.en_passant_square = state.en_passant_square
+        self.halfmove_clock = state.halfmove_clock
 
         if move.is_castle:
             self.set_piece(start, moved_piece)
@@ -425,6 +435,9 @@ class Board:
             self.set_piece(start, moved_piece)
             self.set_piece(end, state.captured)
         return state
+
+    def is_fifty_move_draw(self) -> bool:
+        return self.halfmove_clock >= 100
 
     def generate_legal_moves(self, color: Color) -> List[Move]:
         moves: List[Move] = []
