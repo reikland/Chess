@@ -107,11 +107,13 @@ class ChessApp:
         )
         self.status_label.grid(row=1, column=0, columnspan=6, pady=5)
 
+        dark_color = "#b58863"
         self.canvas = tk.Canvas(
             self.root,
             width=self.square_size * 8 + self.margin_x * 2,
             height=self.square_size * 8 + self.margin_top + self.margin_bottom,
             highlightthickness=0,
+            background=dark_color,
         )
         self.canvas.pack(padx=10, pady=10)
         self.canvas.bind("<Button-1>", self.on_click)
@@ -291,6 +293,18 @@ class ChessApp:
         last_move_to = "#ffb703"
         origin_x = self.margin_x
         origin_y = self.margin_top
+
+        board_width = self.square_size * 8
+        board_height = self.square_size * 8
+
+        self.canvas.create_rectangle(
+            origin_x,
+            origin_y,
+            origin_x + board_width,
+            origin_y + board_height,
+            fill=dark_color,
+            outline="",
+        )
 
         for r in range(8):
             for c in range(8):
