@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import List, Optional
 
 from .board import Board, Move, Piece
@@ -10,9 +11,24 @@ class Game:
         self.board = Board()
         self.turn: str = "white"
         self.move_stack: List[Move] = []
+        self.position_counts: Counter[str] = Counter()
+        self._record_position()
 
     def _switch_turn(self) -> None:
         self.turn = "black" if self.turn == "white" else "white"
+
+    def _position_key(self) -> str:
+        return self.board.position_key(self.turn)
+
+    def _record_position(self) -> None:
+        self.position_counts[self._position_key()] += 1
+
+    def _decrement_position(self) -> None:
+        key = self._position_key()
+        if key in self.position_counts:
+            self.position_counts[key] -= 1
+            if self.position_counts[key] <= 0:
+                del self.position_counts[key]
 
     def legal_moves(self) -> List[Move]:
         return self.board.generate_legal_moves(self.turn)
@@ -53,11 +69,13 @@ class Game:
         self.board.apply_move(candidate)
         self.move_stack.append(candidate)
         self._switch_turn()
+        self._record_position()
         return candidate
 
     def undo(self) -> None:
         if not self.move_stack:
             return
+        self._decrement_position()
         self.board.undo()
         self.move_stack.pop()
         self._switch_turn()
@@ -85,6 +103,7 @@ class Game:
             self.is_checkmate(self.turn)
             or self.is_stalemate(self.turn)
             or self.is_fifty_move_draw()
+            or self.is_threefold_repetition()
         )
 
     def game_status(self) -> str:
@@ -94,6 +113,8 @@ class Game:
             return "stalemate"
         if self.is_fifty_move_draw():
             return "draw by fifty-move rule"
+        if self.is_threefold_repetition():
+            return "draw by repetition"
         if self.in_check(self.turn):
             return f"{self.turn} in check"
         return "ongoing"
@@ -103,3 +124,6 @@ class Game:
 
     def is_fifty_move_draw(self) -> bool:
         return self.board.is_fifty_move_draw()
+
+    def is_threefold_repetition(self) -> bool:
+        return self.position_counts[self._position_key()] >= 3

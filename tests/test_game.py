@@ -77,3 +77,25 @@ def test_fifty_move_rule_detection():
     assert game.board.halfmove_clock == 100
     assert game.is_fifty_move_draw()
     assert game.game_status() == "draw by fifty-move rule"
+
+
+def test_threefold_repetition_detection():
+    game = Game()
+
+    moves = [
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+        ("g1", "f3"),
+        ("g8", "f6"),
+        ("f3", "g1"),
+        ("f6", "g8"),
+    ]
+
+    for start, end in moves:
+        game.make_move(start, end)
+
+    assert game.is_threefold_repetition()
+    assert game.game_status() == "draw by repetition"
+    assert game.is_over()
