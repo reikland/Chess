@@ -249,26 +249,43 @@ def choose_move(
     if not legal_moves:
         return None
 
+    if max_nodes is not None and max_nodes < len(legal_moves):
+        return legal_moves[0]
+
     best_move: Optional[Move] = None
     best_score = float("-inf")
     next_color: Color = "black" if color == "white" else "white"
     node_counter = {"count": 0}
 
-    for move in legal_moves:
-        board.apply_move(move)
-        score = _minimax(
-            board,
-            depth - 1,
-            next_color,
-            color,
-            float("-inf"),
-            float("inf"),
-            max_nodes,
-            node_counter,
-        )
-        board.undo()
-        if best_move is None or score > best_score:
-            best_score = score
-            best_move = move
+    for current_depth in range(1, depth + 1):
+        depth_best_move: Optional[Move] = None
+        depth_best_score = float("-inf")
+
+        for move in legal_moves:
+            if max_nodes is not None and node_counter["count"] >= max_nodes:
+                break
+
+            board.apply_move(move)
+            score = _minimax(
+                board,
+                current_depth - 1,
+                next_color,
+                color,
+                float("-inf"),
+                float("inf"),
+                max_nodes,
+                node_counter,
+            )
+            board.undo()
+            if depth_best_move is None or score > depth_best_score:
+                depth_best_score = score
+                depth_best_move = move
+
+        if depth_best_move is not None:
+            best_move = depth_best_move
+            best_score = depth_best_score
+
+        if max_nodes is not None and node_counter["count"] >= max_nodes:
+            break
 
     return best_move
