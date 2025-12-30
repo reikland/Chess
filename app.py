@@ -175,6 +175,8 @@ class ChessApp:
             return
         if self.game.is_over():
             self.status_var.set(self._status_text())
+            self.selected = None
+            self.draw_board()
             return
         clicked = (int(row), int(col))
 

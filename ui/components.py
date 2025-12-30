@@ -122,6 +122,70 @@ def _is_game_over(board: chess.Board) -> bool:
         return bool(checker())
 
 
+def _callable_bool(board: chess.Board, attr: str, *args) -> bool:
+    func = getattr(board, attr, None)
+    if not callable(func):
+        return False
+    try:
+        return bool(func(*args))
+    except TypeError:
+        try:
+            return bool(func())
+        except TypeError:
+            return False
+
+
+def _is_fifty_move_draw(board: chess.Board) -> bool:
+    can_claim = getattr(board, "can_claim_fifty_moves", None)
+    is_fifty = getattr(board, "is_fifty_moves", None)
+    try:
+        if callable(is_fifty) and is_fifty():
+            return True
+    except TypeError:
+        pass
+    try:
+        return bool(can_claim()) if callable(can_claim) else False
+    except TypeError:
+        return False
+
+
+def _is_threefold_repetition(board: chess.Board) -> bool:
+    can_claim = getattr(board, "can_claim_threefold_repetition", None)
+    is_repetition = getattr(board, "is_repetition", None)
+    try:
+        if callable(is_repetition) and is_repetition(3):
+            return True
+    except TypeError:
+        try:
+            if callable(is_repetition) and is_repetition():
+                return True
+        except TypeError:
+            pass
+    try:
+        return bool(can_claim()) if callable(can_claim) else False
+    except TypeError:
+        return False
+
+
+def _status_message(board: chess.Board) -> str:
+    """Return a translated status message for the current board state."""
+
+    if _callable_bool(board, "is_checkmate"):
+        winner = "Noir" if getattr(board, "turn", chess.WHITE) == chess.WHITE else "Blanc"
+        return f"Échec et mat ! {winner} gagne."
+    if _callable_bool(board, "is_stalemate"):
+        return "Pat : partie nulle."
+    if _is_fifty_move_draw(board):
+        return "Partie nulle par règle des 50 coups."
+    if _is_threefold_repetition(board):
+        return "Partie nulle par répétition."
+    if _callable_bool(board, "is_check"):
+        return f"{_current_player(board)} est en échec."
+    if _is_game_over(board):
+        return "Partie terminée."
+    return f"Tour : {_current_player(board)}"
+
+
 def _announce_board_state(board: chess.Board, player: str) -> None:
     """Push toast messages reflecting the latest board state."""
 
@@ -133,11 +197,13 @@ def _announce_board_state(board: chess.Board, player: str) -> None:
 
     if fifty_move_reached:
         _push_message("Règle des 50 coups atteinte : partie nulle.", "🤝")
-    elif board.is_checkmate():
+    elif _callable_bool(board, "can_claim_threefold_repetition"):
+        _push_message("Répétition de position détectée : partie nulle.", "🤝")
+    elif _callable_bool(board, "is_checkmate"):
         _push_message(f"Échec et mat ! {player} remporte la partie.", "🏁")
-    elif board.is_stalemate():
+    elif _callable_bool(board, "is_stalemate"):
         _push_message("Pat détecté : partie nulle.", "🤝")
-    elif board.is_check():
+    elif _callable_bool(board, "is_check"):
         _push_message(f"Échec contre {_current_player(board)} !", "⚠️")
 
 
@@ -425,6 +491,8 @@ def render_board() -> None:
     preferences = st.session_state["preferences"]
     board: chess.Board = game["board"]
 
+    game_over = _is_game_over(board)
+
     selected_square: str | None = game.get("selected_square")
     legal_moves: list[chess.Move] = game.get("legal_moves", [])
     legal_targets = _legal_targets(legal_moves)
@@ -457,6 +525,7 @@ def render_board() -> None:
                     key=f"square-{name}",
                     use_container_width=True,
                     type=button_type,
+                    disabled=game_over,
                 ):
                     on_square_click(name)
     board_container.markdown("</div>", unsafe_allow_html=True)
@@ -542,9 +611,7 @@ def render_move_controls() -> None:
 
 def render_status_bar() -> None:
     board: chess.Board = st.session_state["game"]["board"]
-    current_player = _current_player(board)
-    status = "Échec" if board.is_check() else "Tour"
-    st.info(f"{status} : {current_player}")
+    st.info(_status_message(board))
     if st.session_state.get("last_ai_move"):
         st.caption(f"Dernier coup IA : {st.session_state['last_ai_move']}")
     clock = _update_clock(board)
