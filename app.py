@@ -2,6 +2,9 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Tuple
 
+# Tkinter simple dialogs are used for promotion choices.
+from tkinter import simpledialog
+
 from chess_engine.ai import choose_move
 from chess_engine.board import Board
 from chess_engine.game import Game
@@ -144,6 +147,23 @@ class ChessApp:
             return f"{turn} est en échec."
         return status
 
+    def _choose_promotion(self, color: str) -> str:
+        """Prompt the user for a promotion piece, defaulting to queen."""
+
+        choices = {"Dame": "Q", "Tour": "R", "Fou": "B", "Cavalier": "N"}
+        prompt = "Choisissez la pièce de promotion (Dame par défaut) :"
+        selection = simpledialog.askstring(
+            "Promotion",
+            prompt,
+            parent=self.root,
+            initialvalue="Dame",
+        )
+
+        if selection:
+            selection = selection.strip().capitalize()
+        # Fallback to queen if the input is missing or invalid
+        return choices.get(selection, "Q")
+
     def on_click(self, event: tk.Event) -> None:
         row = event.y // self.square_size
         col = event.x // self.square_size
@@ -178,7 +198,7 @@ class ChessApp:
             if (moving_piece.color == "white" and end[0] == 0) or (
                 moving_piece.color == "black" and end[0] == 7
             ):
-                promotion = "Q"
+                promotion = self._choose_promotion(moving_piece.color)
 
         human_played = False
         try:
