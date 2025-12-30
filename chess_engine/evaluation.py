@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
+from chess_engine.board import Board, Color, Piece
+
+PieceValue: Dict[str, float] = {
+    "P": 1.0,
+    "N": 3.2,
+    "B": 3.33,
+    "R": 5.1,
+    "Q": 9.0,
+    "K": 0.0,
+}
+
+PHASE_WEIGHTS = {"P": 0, "N": 1, "B": 1, "R": 2, "Q": 4, "K": 0}
+TOTAL_PHASE = 24  # Starting phase sum across both sides
+
+
+@dataclass(frozen=True)
+class EvaluationConfig:
+    pawn_shield_bonus: float = 0.15
+    king_open_file_penalty: float = 0.25
+    king_centralization_bonus: float = 0.05
+    doubled_pawn_penalty: float = 0.2
+    isolated_pawn_penalty: float = 0.15
+    passed_pawn_bonus: float = 0.3
+
+
+CONFIG = EvaluationConfig()
+
+
+MIDGAME_TABLES: Dict[str, Tuple[Tuple[float, ...], ...]] = {
+    "P": (
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.05, 0.1, 0.1, -0.1, -0.1, 0.1, 0.1, 0.05),
+        (0.05, -0.05, -0.05, 0.1, 0.1, -0.05, -0.05, 0.05),
+        (0.0, 0.0, 0.0, 0.2, 0.2, 0.0, 0.0, 0.0),
+        (0.05, 0.05, 0.1, 0.25, 0.25, 0.1, 0.05, 0.05),
+        (0.1, 0.1, 0.15, 0.2, 0.2, 0.15, 0.1, 0.1),
+        (0.2, 0.2, 0.2, 0.25, 0.25, 0.2, 0.2, 0.2),
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ),
+    "N": (
+        (-0.5, -0.4, -0.3, -0.3, -0.3, -0.3, -0.4, -0.5),
+        (-0.4, -0.25, 0.0, 0.05, 0.05, 0.0, -0.25, -0.4),
+        (-0.3, 0.05, 0.15, 0.2, 0.2, 0.15, 0.05, -0.3),
+        (-0.3, 0.0, 0.2, 0.25, 0.25, 0.2, 0.0, -0.3),
+        (-0.3, 0.05, 0.2, 0.25, 0.25, 0.2, 0.05, -0.3),
+        (-0.3, 0.0, 0.15, 0.2, 0.2, 0.15, 0.0, -0.3),
+        (-0.4, -0.25, 0.0, 0.05, 0.05, 0.0, -0.25, -0.4),
+        (-0.5, -0.4, -0.3, -0.3, -0.3, -0.3, -0.4, -0.5),
+    ),
+    "B": (
+        (-0.2, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.2),
+        (-0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.05, -0.1),
+        (-0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, -0.1),
+        (-0.1, 0.0, 0.1, 0.15, 0.15, 0.1, 0.0, -0.1),
+        (-0.1, 0.05, 0.15, 0.15, 0.15, 0.15, 0.05, -0.1),
+        (-0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, -0.1),
+        (-0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.05, -0.1),
+        (-0.2, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.2),
+    ),
+    "R": (
+        (0.0, 0.05, 0.1, 0.1, 0.1, 0.1, 0.05, 0.0),
+        (-0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.05),
+        (-0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.05),
+        (-0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.05),
+        (-0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.05),
+        (-0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.05),
+        (0.05, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.05),
+        (0.0, 0.0, 0.0, 0.05, 0.05, 0.0, 0.0, 0.0),
+    ),
+    "Q": (
+        (-0.2, -0.1, -0.1, -0.05, -0.05, -0.1, -0.1, -0.2),
+        (-0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.1),
+        (-0.1, 0.0, 0.05, 0.05, 0.05, 0.05, 0.0, -0.1),
+        (-0.05, 0.0, 0.05, 0.05, 0.05, 0.05, 0.0, -0.05),
+        (0.0, 0.0, 0.05, 0.05, 0.05, 0.05, 0.0, -0.05),
+        (-0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.0, -0.1),
+        (-0.1, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0, -0.1),
+        (-0.2, -0.1, -0.1, -0.05, -0.05, -0.1, -0.1, -0.2),
+    ),
+    "K": (
+        (0.2, 0.3, 0.1, 0.0, 0.0, 0.1, 0.3, 0.2),
+        (0.2, 0.2, 0.0, 0.0, 0.0, 0.0, 0.2, 0.2),
+        (-0.1, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.1),
+        (-0.2, -0.3, -0.3, -0.4, -0.4, -0.3, -0.3, -0.2),
+        (-0.3, -0.4, -0.4, -0.5, -0.5, -0.4, -0.4, -0.3),
+        (-0.3, -0.4, -0.4, -0.5, -0.5, -0.4, -0.4, -0.3),
+        (-0.3, -0.4, -0.4, -0.5, -0.5, -0.4, -0.4, -0.3),
+        (-0.3, -0.4, -0.4, -0.5, -0.5, -0.4, -0.4, -0.3),
+    ),
+}
+
+ENDGAME_TABLES: Dict[str, Tuple[Tuple[float, ...], ...]] = {
+    "P": tuple(reversed(MIDGAME_TABLES["P"])),
+    "N": MIDGAME_TABLES["N"],
+    "B": MIDGAME_TABLES["B"],
+    "R": MIDGAME_TABLES["R"],
+    "Q": MIDGAME_TABLES["Q"],
+    "K": (
+        (-0.1, -0.05, 0.0, 0.05, 0.05, 0.0, -0.05, -0.1),
+        (-0.05, 0.05, 0.1, 0.15, 0.15, 0.1, 0.05, -0.05),
+        (0.0, 0.1, 0.15, 0.2, 0.2, 0.15, 0.1, 0.0),
+        (0.05, 0.15, 0.2, 0.25, 0.25, 0.2, 0.15, 0.05),
+        (0.05, 0.15, 0.2, 0.25, 0.25, 0.2, 0.15, 0.05),
+        (0.0, 0.1, 0.15, 0.2, 0.2, 0.15, 0.1, 0.0),
+        (-0.05, 0.05, 0.1, 0.15, 0.15, 0.1, 0.05, -0.05),
+        (-0.1, -0.05, 0.0, 0.05, 0.05, 0.0, -0.05, -0.1),
+    ),
+}
+
+
+def _mirror_row(row: int) -> int:
+    return 7 - row
+
+
+def _game_phase(board: Board) -> float:
+    remaining_phase = 0
+    for row in board.board:
+        for piece in row:
+            if piece:
+                remaining_phase += PHASE_WEIGHTS[piece.kind]
+    return max(0.0, min(1.0, remaining_phase / TOTAL_PHASE))
+
+
+def _piece_square_value(table: Tuple[Tuple[float, ...], ...], piece: Piece, row: int, col: int) -> float:
+    lookup_row = row if piece.color == "white" else _mirror_row(row)
+    return table[lookup_row][col]
+
+
+def _material_and_position(board: Board) -> Tuple[float, float]:
+    mid_score = 0.0
+    end_score = 0.0
+    for r in range(8):
+        for c in range(8):
+            piece = board.board[r][c]
+            if not piece:
+                continue
+            sign = 1.0 if piece.color == "white" else -1.0
+            base_value = PieceValue.get(piece.kind, 0.0)
+            mid_table = MIDGAME_TABLES[piece.kind]
+            end_table = ENDGAME_TABLES[piece.kind]
+            mid_score += sign * (base_value + _piece_square_value(mid_table, piece, r, c))
+            end_score += sign * (base_value + _piece_square_value(end_table, piece, r, c))
+    return mid_score, end_score
+
+
+def _file_has_pawn(board: Board, file_index: int, color: Color) -> bool:
+    return any(
+        (piece is not None and piece.kind == "P" and piece.color == color)
+        for piece in (board.board[r][file_index] for r in range(8))
+    )
+
+
+def king_safety(board: Board) -> Tuple[float, float]:
+    mid_score = 0.0
+    end_score = 0.0
+    for color in ("white", "black"):
+        king_pos = board._king_position(color)
+        if king_pos is None:
+            continue
+        r, c = king_pos
+        direction = -1 if color == "white" else 1
+        shield_squares = [
+            (r + direction, c + dc) for dc in (-1, 0, 1) if Board.in_bounds((r + direction, c + dc))
+        ]
+        shield = sum(
+            1
+            for square in shield_squares
+            if (piece := board.get_piece(square)) and piece.kind == "P" and piece.color == color
+        )
+        score = shield * CONFIG.pawn_shield_bonus
+
+        if not _file_has_pawn(board, c, color):
+            score -= CONFIG.king_open_file_penalty
+
+        center_distance = abs(3.5 - r) + abs(3.5 - c)
+        centralization = (3.5 - center_distance) * CONFIG.king_centralization_bonus
+        end_score += (centralization if color == "white" else -centralization)
+
+        mid_score += score if color == "white" else -score
+    return mid_score, end_score
+
+
+def _pawn_files(board: Board, color: Color) -> Dict[int, list[Tuple[int, int]]]:
+    files: Dict[int, list[Tuple[int, int]]] = {i: [] for i in range(8)}
+    for r in range(8):
+        for c in range(8):
+            piece = board.board[r][c]
+            if piece and piece.kind == "P" and piece.color == color:
+                files[c].append((r, c))
+    return files
+
+
+def pawn_structure(board: Board) -> float:
+    score = 0.0
+    for color_sign, color in ((1.0, "white"), (-1.0, "black")):
+        files = _pawn_files(board, color)
+        opponent = "black" if color == "white" else "white"
+        opponent_files = _pawn_files(board, opponent)
+
+        for file_index, pawns in files.items():
+            if len(pawns) > 1:
+                score -= color_sign * CONFIG.doubled_pawn_penalty * (len(pawns) - 1)
+
+            adjacent_files = [file_index - 1, file_index + 1]
+            has_neighbor = any(
+                0 <= adj < 8 and files[adj] for adj in adjacent_files
+            )
+            if not has_neighbor:
+                score -= color_sign * CONFIG.isolated_pawn_penalty
+
+            for pawn_row, _ in pawns:
+                direction = -1 if color == "white" else 1
+                rows_ahead = range(pawn_row + direction, -1, direction) if color == "white" else range(pawn_row + direction, 8, direction)
+                opponent_pawns_ahead = any(
+                    any(pr == pawn_row_ahead for pr, _ in opponent_files.get(f, []))
+                    for pawn_row_ahead in rows_ahead
+                    for f in (file_index - 1, file_index, file_index + 1)
+                    if 0 <= f < 8
+                )
+                if not opponent_pawns_ahead:
+                    score += color_sign * CONFIG.passed_pawn_bonus
+    return score
+
+
+def evaluate_board(board: Board) -> float:
+    phase = _game_phase(board)
+    mid_score, end_score = _material_and_position(board)
+    king_mid, king_end = king_safety(board)
+    pawn_score = pawn_structure(board)
+
+    mid_total = mid_score + king_mid + pawn_score
+    end_total = end_score + king_end + pawn_score
+
+    return (phase * mid_total) + ((1 - phase) * end_total)
+
