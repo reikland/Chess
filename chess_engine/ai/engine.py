@@ -34,6 +34,22 @@ def _mobility_score(board: Board) -> float:
     return 0.1 * (white_moves - black_moves)
 
 
+def _captured_piece(board: Board, move: Move) -> Optional[Piece]:
+    if move.is_en_passant:
+        return board.get_piece((move.start[0], move.end[1]))
+    return board.get_piece(move.end)
+
+
+def _move_order_score(board: Board, move: Move) -> tuple[int, int]:
+    captured = _captured_piece(board, move)
+    mover = board.get_piece(move.start)
+    captured_value = PieceValue.get(captured.kind, 0) if captured else 0
+    mover_value = PieceValue.get(mover.kind, 0) if mover else 0
+    capture_score = captured_value * 10 - mover_value if captured else 0
+    promotion_bonus = PieceValue.get(move.promotion, 0) if move.promotion else 0
+    return (1 if captured else 0, capture_score + promotion_bonus)
+
+
 def evaluate_board(board: Board) -> float:
     """Evaluate the board using material balance and mobility."""
 
@@ -71,7 +87,11 @@ def _minimax(
         base_score = evaluate_board(board)
         return base_score if maximizing_color == "white" else -base_score
 
-    legal_moves = board.generate_legal_moves(current_color)
+    legal_moves = sorted(
+        board.generate_legal_moves(current_color),
+        key=lambda move: _move_order_score(board, move),
+        reverse=True,
+    )
     if not legal_moves:
         terminal_score = _terminal_score(board, current_color, maximizing_color)
         return terminal_score if terminal_score is not None else 0.0
@@ -134,7 +154,11 @@ def choose_move(
     offering a deterministic cap on the AI thinking time.
     """
 
-    legal_moves = board.generate_legal_moves(color)
+    legal_moves = sorted(
+        board.generate_legal_moves(color),
+        key=lambda move: _move_order_score(board, move),
+        reverse=True,
+    )
     if not legal_moves:
         return None
 
