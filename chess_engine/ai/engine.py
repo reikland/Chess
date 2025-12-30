@@ -5,27 +5,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from chess_engine.board import Board, Color, Move, Piece
-
-PieceValue = {
-    "P": 1,
-    "N": 3,
-    "B": 3,
-    "R": 5,
-    "Q": 9,
-    "K": 0,
-}
-
-
-def _material_score(board: Board) -> float:
-    score = 0.0
-    for r in range(8):
-        for c in range(8):
-            piece = board.board[r][c]
-            if not piece:
-                continue
-            value = PieceValue.get(piece.kind, 0)
-            score += value if piece.color == "white" else -value
-    return score
+from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
 
 
 def _mobility_score(board: Board) -> float:
@@ -51,9 +31,9 @@ def _move_order_score(board: Board, move: Move) -> tuple[int, int]:
 
 
 def evaluate_board(board: Board) -> float:
-    """Evaluate the board using material balance and mobility."""
+    """Evaluate the board using tapered material/positional features and mobility."""
 
-    return _material_score(board) + _mobility_score(board)
+    return _static_evaluation(board) + _mobility_score(board)
 
 
 def _terminal_score(board: Board, player: Color, maximizing_color: Color) -> Optional[float]:
