@@ -18,19 +18,26 @@ from services.storage import (
     refresh_serialized_buffers,
     serialize_game,
 )
+from services.clock import ClockState, format_time, tick
 
 
 def _piece_symbol(piece: chess.Piece | None) -> str:
+    """Return a human-readable symbol for a chess piece."""
+
     if piece is None:
         return "·"
     return piece.unicode_symbol().upper() if piece.color == chess.WHITE else piece.unicode_symbol()
 
 
 def _push_message(text: str, icon: str = "ℹ️") -> None:
+    """Queue a toast message to be rendered on the next refresh."""
+
     st.session_state.setdefault("messages", []).append({"text": text, "icon": icon})
 
 
 def flush_messages() -> None:
+    """Render and clear toast messages stored in session state."""
+
     messages = st.session_state.get("messages", [])
     for message in messages:
         st.toast(message["text"], icon=message.get("icon", "ℹ️"))
@@ -48,6 +55,8 @@ def _square_label(
     legal_targets: Iterable[str],
     last_move_squares: Iterable[str],
 ) -> str:
+    """Return the button label representing a board square."""
+
     markers: list[str] = []
     if name == selected_square:
         markers.append("⏺")
@@ -66,6 +75,38 @@ def _available_moves_from(board: chess.Board, square: str) -> list[chess.Move]:
 
 def _current_player(board: chess.Board) -> str:
     return "Blanc" if board.turn == chess.WHITE else "Noir"
+
+
+def _color_label(board_turn: chess.Color) -> str:
+    """Return a simple color label for the given board turn."""
+
+    return "white" if board_turn == chess.WHITE else "black"
+
+
+def _announce_board_state(board: chess.Board, player: str) -> None:
+    """Push toast messages reflecting the latest board state."""
+
+    if board.is_checkmate():
+        _push_message(f"Échec et mat ! {player} remporte la partie.", "🏁")
+    elif board.is_stalemate():
+        _push_message("Pat détecté : partie nulle.", "🤝")
+    elif board.is_check():
+        _push_message(f"Échec contre {_current_player(board)} !", "⚠️")
+
+
+def _update_clock(board: chess.Board) -> ClockState | None:
+    """Update the chess clock based on the current turn."""
+
+    if not st.session_state["preferences"].get("show_clock", True):
+        return None
+
+    clock: ClockState | None = st.session_state.get("clock")
+    if clock is None:
+        return None
+
+    updated = tick(clock, _color_label(board.turn))
+    st.session_state["clock"] = updated
+    return updated
 
 
 def _update_last_move(game: dict) -> None:
@@ -90,7 +131,7 @@ def on_square_click(square: str) -> None:
     if selected_square is None:
         available_moves = _available_moves_from(board, square)
         if not available_moves:
-            _push_message("Aucun coup légal depuis cette case.", "⚠️")
+            _push_message("Coup illégal : aucune pièce jouable ici.", "⚠️")
             return
         game["selected_square"] = square
         game["legal_moves"] = available_moves
@@ -116,7 +157,7 @@ def on_square_click(square: str) -> None:
         if alternative_moves:
             game["selected_square"] = square
             game["legal_moves"] = alternative_moves
-        _push_message("Destination invalide pour la pièce sélectionnée.", "⚠️")
+        _push_message("Coup illégal : destination invalide.", "⚠️")
         return
 
     _record_move(move, _current_player(board), is_ai=False)
@@ -142,7 +183,10 @@ def _record_move(move: chess.Move, player: str, is_ai: bool) -> None:
     game["legal_moves"] = []
     if is_ai:
         st.session_state["last_ai_move"] = san
-    _push_message(f"L'IA joue {san}", "🤖")
+        _push_message(f"L'IA joue {san}", "🤖")
+    else:
+        _push_message(f"{player} joue {san}", "♟️")
+    _announce_board_state(board, player)
 
 
 def _load_game_state(game_state: dict) -> None:
@@ -333,6 +377,12 @@ def render_status_bar() -> None:
     st.info(f"{status} : {current_player}")
     if st.session_state.get("last_ai_move"):
         st.caption(f"Dernier coup IA : {st.session_state['last_ai_move']}")
+    clock = _update_clock(board)
+    if clock:
+        st.caption(
+            "Horloge — Blanc : "
+            f"{format_time(clock.white_remaining)} | Noir : {format_time(clock.black_remaining)}"
+        )
 
 
 def _render_storage_controls() -> None:
