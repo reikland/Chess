@@ -262,6 +262,7 @@ def apply_ai_move() -> None:
         engine_board,
         preferences.get("ai_depth", 2),
         "white" if ai_color == chess.WHITE else "black",
+        max_nodes=int(preferences.get("ai_max_nodes", 0)) or None,
     )
     if engine_move is None:
         _push_message("Aucun coup disponible pour l'IA.", "⚠️")

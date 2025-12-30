@@ -56,7 +56,14 @@ def _minimax(
     maximizing_color: Color,
     alpha: float,
     beta: float,
+    max_nodes: Optional[int],
+    node_counter: dict[str, int],
 ) -> float:
+    node_counter["count"] += 1
+    if max_nodes is not None and node_counter["count"] > max_nodes:
+        base_score = evaluate_board(board)
+        return base_score if maximizing_color == "white" else -base_score
+
     terminal = _terminal_score(board, current_color, maximizing_color)
     if depth == 0 or terminal is not None:
         if terminal is not None:
@@ -76,7 +83,19 @@ def _minimax(
         value = float("-inf")
         for move in legal_moves:
             board.apply_move(move)
-            value = max(value, _minimax(board, depth - 1, next_color, maximizing_color, alpha, beta))
+            value = max(
+                value,
+                _minimax(
+                    board,
+                    depth - 1,
+                    next_color,
+                    maximizing_color,
+                    alpha,
+                    beta,
+                    max_nodes,
+                    node_counter,
+                ),
+            )
             board.undo()
             alpha = max(alpha, value)
             if alpha >= beta:
@@ -86,7 +105,19 @@ def _minimax(
     value = float("inf")
     for move in legal_moves:
         board.apply_move(move)
-        value = min(value, _minimax(board, depth - 1, next_color, maximizing_color, alpha, beta))
+        value = min(
+            value,
+            _minimax(
+                board,
+                depth - 1,
+                next_color,
+                maximizing_color,
+                alpha,
+                beta,
+                max_nodes,
+                node_counter,
+            ),
+        )
         board.undo()
         beta = min(beta, value)
         if beta <= alpha:
@@ -94,8 +125,14 @@ def _minimax(
     return value
 
 
-def choose_move(board: Board, depth: int, color: Color) -> Optional[Move]:
-    """Return the best move for ``color`` using minimax with alpha-beta pruning."""
+def choose_move(
+    board: Board, depth: int, color: Color, max_nodes: Optional[int] = None
+) -> Optional[Move]:
+    """Return the best move for ``color`` using minimax with alpha-beta pruning.
+
+    ``max_nodes`` can be provided to limit the total number of explored nodes,
+    offering a deterministic cap on the AI thinking time.
+    """
 
     legal_moves = board.generate_legal_moves(color)
     if not legal_moves:
@@ -104,10 +141,20 @@ def choose_move(board: Board, depth: int, color: Color) -> Optional[Move]:
     best_move: Optional[Move] = None
     best_score = float("-inf")
     next_color: Color = "black" if color == "white" else "white"
+    node_counter = {"count": 0}
 
     for move in legal_moves:
         board.apply_move(move)
-        score = _minimax(board, depth - 1, next_color, color, float("-inf"), float("inf"))
+        score = _minimax(
+            board,
+            depth - 1,
+            next_color,
+            color,
+            float("-inf"),
+            float("inf"),
+            max_nodes,
+            node_counter,
+        )
         board.undo()
         if score > best_score:
             best_score = score

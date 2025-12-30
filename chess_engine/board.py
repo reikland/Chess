@@ -154,8 +154,11 @@ class Board:
 
     def in_check(self, color: Color) -> bool:
         king_pos = self._king_position(color)
+        # A missing king indicates an invalid position where the player is
+        # effectively checkmated; treat it as being in check to avoid
+        # continuing the game with a captured king.
         if king_pos is None:
-            return False
+            return True
         opponent = "black" if color == "white" else "white"
         return self.is_square_attacked(king_pos, opponent)
 
@@ -180,7 +183,7 @@ class Board:
                 diag = (r + direction, c + dc)
                 if self.in_bounds(diag):
                     target = self.get_piece(diag)
-                    if target and self._enemy(target, color):
+                    if target and self._enemy(target, color) and target.kind != "K":
                         if diag[0] in (0, 7):
                             for promo in ["Q", "R", "B", "N"]:
                                 moves.append(Move((r, c), diag, promotion=promo))
@@ -197,7 +200,7 @@ class Board:
                 nr, nc = r + dr, c + dc
                 if self.in_bounds((nr, nc)):
                     target = self.get_piece((nr, nc))
-                    if not target or self._enemy(target, color):
+                    if not target or (self._enemy(target, color) and target.kind != "K"):
                         moves.append(Move((r, c), (nr, nc)))
         elif piece.kind in {"B", "R", "Q"}:
             directions = []
@@ -210,7 +213,7 @@ class Board:
                 while self.in_bounds((nr, nc)):
                     target = self.get_piece((nr, nc))
                     if target:
-                        if self._enemy(target, color):
+                        if self._enemy(target, color) and target.kind != "K":
                             moves.append(Move((r, c), (nr, nc)))
                         break
                     moves.append(Move((r, c), (nr, nc)))
@@ -224,7 +227,7 @@ class Board:
                     nr, nc = r + dr, c + dc
                     if self.in_bounds((nr, nc)):
                         target = self.get_piece((nr, nc))
-                        if not target or self._enemy(target, color):
+                        if not target or (self._enemy(target, color) and target.kind != "K"):
                             moves.append(Move((r, c), (nr, nc)))
             # Castling
             wk, wq, bk, bq = self.castling_rights
