@@ -6,6 +6,16 @@ from typing import Iterable, Optional
 
 from chess_engine.board import Board, Color, Move, Piece
 from chess_engine.evaluation import PieceValue, evaluate_board as _static_evaluation
+from chess_engine.transposition import (
+    EXACT,
+    LOWERBOUND,
+    UPPERBOUND,
+    TranspositionTable,
+    TTEntry,
+    probe as tt_probe,
+    store as tt_store,
+    zobrist_hash,
+)
 
 
 def _mobility_score(board: Board) -> float:
@@ -53,6 +63,7 @@ def _quiescence(
     beta: float,
     max_nodes: Optional[int],
     node_counter: dict[str, int],
+    transposition_table: Optional[TranspositionTable],
 ) -> float:
     """Extend leaf searches by only exploring forcing moves (captures/checks)."""
 
@@ -68,7 +79,16 @@ def _quiescence(
     stand_pat = evaluate_board(board)
     stand_pat = stand_pat if maximizing_color == "white" else -stand_pat
 
+    tt_entry: Optional[TTEntry] = None
+    tt_key: Optional[int] = None
+    if transposition_table:
+        tt_key = zobrist_hash(board, current_color)
+        tt_entry = tt_probe(transposition_table, tt_key, 0, alpha, beta)
+        if tt_entry:
+            return tt_entry.score
+
     maximizing = current_color == maximizing_color
+    alpha_original, beta_original = alpha, beta
     if maximizing:
         value = stand_pat
         if value >= beta:
@@ -106,6 +126,7 @@ def _quiescence(
             beta,
             max_nodes,
             node_counter,
+            transposition_table,
         )
         board.undo()
         if maximizing:
@@ -119,6 +140,14 @@ def _quiescence(
             if beta <= alpha:
                 break
 
+    if transposition_table and tt_key is not None:
+        flag = EXACT
+        if value <= alpha_original:
+            flag = UPPERBOUND
+        elif value >= beta_original:
+            flag = LOWERBOUND
+        tt_store(transposition_table, tt_key, 0, value, flag, best_move=None)
+
     return value
 
 
@@ -131,6 +160,7 @@ def _minimax(
     beta: float,
     max_nodes: Optional[int],
     node_counter: dict[str, int],
+    transposition_table: Optional[TranspositionTable],
 ) -> float:
     node_counter["count"] += 1
     if max_nodes is not None and node_counter["count"] > max_nodes:
@@ -149,6 +179,7 @@ def _minimax(
             beta,
             max_nodes,
             node_counter,
+            transposition_table,
         )
 
     legal_moves = sorted(
@@ -162,36 +193,29 @@ def _minimax(
 
     maximizing = current_color == maximizing_color
     next_color: Color = "black" if current_color == "white" else "white"
+    best_move_found: Optional[Move] = None
+
+    tt_entry: Optional[TTEntry] = None
+    tt_key: Optional[int] = None
+    if transposition_table:
+        tt_key = zobrist_hash(board, current_color)
+        tt_entry = tt_probe(transposition_table, tt_key, depth, alpha, beta)
+        if tt_entry:
+            return tt_entry.score
+
+    if tt_entry and tt_entry.best_move:
+        for idx, move in enumerate(legal_moves):
+            if move == tt_entry.best_move:
+                legal_moves.insert(0, legal_moves.pop(idx))
+                break
+
+    alpha_original, beta_original = alpha, beta
 
     if maximizing:
         value = float("-inf")
         for move in legal_moves:
             board.apply_move(move)
-            value = max(
-                value,
-                _minimax(
-                    board,
-                    depth - 1,
-                    next_color,
-                    maximizing_color,
-                    alpha,
-                    beta,
-                    max_nodes,
-                    node_counter,
-                ),
-            )
-            board.undo()
-            alpha = max(alpha, value)
-            if alpha >= beta:
-                break
-        return value
-
-    value = float("inf")
-    for move in legal_moves:
-        board.apply_move(move)
-        value = min(
-            value,
-            _minimax(
+            score = _minimax(
                 board,
                 depth - 1,
                 next_color,
@@ -200,17 +224,54 @@ def _minimax(
                 beta,
                 max_nodes,
                 node_counter,
-            ),
-        )
-        board.undo()
-        beta = min(beta, value)
-        if beta <= alpha:
-            break
+                transposition_table,
+            )
+            board.undo()
+            if score > value:
+                value = score
+                best_move_found = move
+            alpha = max(alpha, value)
+            if alpha >= beta:
+                break
+    else:
+        value = float("inf")
+        for move in legal_moves:
+            board.apply_move(move)
+            score = _minimax(
+                board,
+                depth - 1,
+                next_color,
+                maximizing_color,
+                alpha,
+                beta,
+                max_nodes,
+                node_counter,
+                transposition_table,
+            )
+            board.undo()
+            if score < value:
+                value = score
+                best_move_found = move
+            beta = min(beta, value)
+            if beta <= alpha:
+                break
+
+    if transposition_table and tt_key is not None:
+        flag = EXACT
+        if value <= alpha_original:
+            flag = UPPERBOUND
+        elif value >= beta_original:
+            flag = LOWERBOUND
+        tt_store(transposition_table, tt_key, depth, value, flag, best_move_found)
     return value
 
 
 def choose_move(
-    board: Board, depth: int, color: Color, max_nodes: Optional[int] = None
+    board: Board,
+    depth: int,
+    color: Color,
+    max_nodes: Optional[int] = None,
+    transposition_table: Optional[TranspositionTable] = None,
 ) -> Optional[Move]:
     """Return the best move for ``color`` using minimax with alpha-beta pruning.
 
@@ -236,6 +297,7 @@ def choose_move(
     best_score = float("-inf")
     next_color: Color = "black" if color == "white" else "white"
     node_counter = {"count": 0}
+    transposition_table = transposition_table or TranspositionTable()
 
     for current_depth in range(1, depth + 1):
         depth_best_move: Optional[Move] = None
@@ -255,6 +317,7 @@ def choose_move(
                 float("inf"),
                 max_nodes,
                 node_counter,
+                transposition_table,
             )
             board.undo()
             if depth_best_move is None or score > depth_best_score:
