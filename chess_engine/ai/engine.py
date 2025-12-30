@@ -286,24 +286,11 @@ def _minimax(
             deadline,
         )
 
-    legal_moves = sorted(
-        legal_moves,
-        key=lambda move: _move_order_score(
-            board,
-            move,
-            killer_moves=killer_moves,
-            history_scores=history_scores,
-            depth=depth,
-        ),
-        reverse=True,
-    )
-    if not legal_moves:
-        terminal_score = _terminal_score(board, current_color, maximizing_color)
-        return terminal_score if terminal_score is not None else 0.0
-
     maximizing = current_color == maximizing_color
     next_color: Color = "black" if current_color == "white" else "white"
     best_move_found: Optional[Move] = None
+
+    move_order_scores: Dict[tuple, tuple[int, int, int, int]] = {}
 
     def _apply_null_move_allowed() -> bool:
         if depth < 2:
@@ -367,11 +354,46 @@ def _minimax(
         if tt_entry:
             return tt_entry.score
 
+    def _order_key(move: Move) -> tuple:
+        return (move.start, move.end, move.promotion, move.is_castle, move.is_en_passant)
+
+    tt_best_move: Optional[Move] = None
     if ordering_entry and ordering_entry.best_move:
         for idx, move in enumerate(legal_moves):
             if move == ordering_entry.best_move:
-                legal_moves.insert(0, legal_moves.pop(idx))
+                tt_best_move = legal_moves.pop(idx)
+                move_order_scores.setdefault(
+                    _order_key(tt_best_move),
+                    _move_order_score(
+                        board,
+                        tt_best_move,
+                        killer_moves=killer_moves,
+                        history_scores=history_scores,
+                        depth=depth,
+                    ),
+                )
                 break
+
+    def _order_score(move: Move) -> tuple[int, int, int, int]:
+        key = _order_key(move)
+        return move_order_scores.setdefault(
+            key,
+            _move_order_score(
+                board,
+                move,
+                killer_moves=killer_moves,
+                history_scores=history_scores,
+                depth=depth,
+            ),
+        )
+
+    legal_moves = sorted(legal_moves, key=_order_score, reverse=True)
+    if tt_best_move is not None:
+        legal_moves.insert(0, tt_best_move)
+
+    if not legal_moves:
+        terminal_score = _terminal_score(board, current_color, maximizing_color)
+        return terminal_score if terminal_score is not None else 0.0
 
     alpha_original, beta_original = alpha, beta
 
@@ -543,30 +565,47 @@ def choose_move(
 
     killer_moves: Dict[int, list[Move]] = {}
     history_scores: Dict[Tuple, int] = {}
+    move_order_scores: Dict[int, Dict[tuple, tuple[int, int, int, int]]] = {}
 
     start_time = time.time()
 
-    legal_moves = sorted(
-        board.generate_legal_moves(color),
-        key=lambda move: _move_order_score(
-            board,
-            move,
-            killer_moves=killer_moves,
-            history_scores=history_scores,
-            depth=depth,
-        ),
-        reverse=True,
-    )
+    def _order_key(move: Move) -> tuple:
+        return (move.start, move.end, move.promotion, move.is_castle, move.is_en_passant)
+
+    def _order_score(move: Move, current_depth: int) -> tuple[int, int, int, int]:
+        depth_scores = move_order_scores.setdefault(current_depth, {})
+        key = _order_key(move)
+        if key not in depth_scores:
+            depth_scores[key] = _move_order_score(
+                board,
+                move,
+                killer_moves=killer_moves,
+                history_scores=history_scores,
+                depth=current_depth,
+            )
+        return depth_scores[key]
+
+    legal_moves = list(board.generate_legal_moves(color))
     tt_order_entry: Optional[TTEntry] = None
     if transposition_table:
         tt_key = zobrist_hash(board, color)
         tt_order_entry = transposition_table.probe(tt_key)
 
+    tt_best_move: Optional[Move] = None
     if tt_order_entry and tt_order_entry.best_move:
         for idx, move in enumerate(legal_moves):
             if move == tt_order_entry.best_move:
-                legal_moves.insert(0, legal_moves.pop(idx))
+                tt_best_move = legal_moves.pop(idx)
+                _order_score(tt_best_move, depth)
                 break
+
+    legal_moves = sorted(
+        legal_moves,
+        key=lambda move: _order_score(move, depth),
+        reverse=True,
+    )
+    if tt_best_move is not None:
+        legal_moves.insert(0, tt_best_move)
 
     if not legal_moves:
         return None
@@ -588,23 +627,22 @@ def choose_move(
         depth_best_move: Optional[Move] = None
         depth_best_score = float("-inf")
 
-        legal_moves = sorted(
-            legal_moves,
-            key=lambda move: _move_order_score(
-                board,
-                move,
-                killer_moves=killer_moves,
-                history_scores=history_scores,
-                depth=current_depth,
-            ),
-            reverse=True,
-        )
-
+        tt_best_move = None
         if tt_order_entry and tt_order_entry.best_move:
             for idx, move in enumerate(legal_moves):
                 if move == tt_order_entry.best_move:
-                    legal_moves.insert(0, legal_moves.pop(idx))
+                    tt_best_move = legal_moves.pop(idx)
+                    _order_score(tt_best_move, current_depth)
                     break
+
+        legal_moves = sorted(
+            legal_moves,
+            key=lambda move: _order_score(move, current_depth),
+            reverse=True,
+        )
+
+        if tt_best_move is not None:
+            legal_moves.insert(0, tt_best_move)
 
         for move in legal_moves:
             if max_nodes is not None and node_counter["count"] >= max_nodes:
