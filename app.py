@@ -45,6 +45,7 @@ class ChessApp:
         self.ai_color_var = tk.StringVar(value="Noir")
         self.ai_depth_var = tk.IntVar(value=2)
         self.ai_nodes_var = tk.IntVar(value=5000)
+        self.ai_time_limit_var = tk.IntVar(value=1500)
 
         self.status_var = tk.StringVar(value=self._status_text())
 
@@ -83,7 +84,10 @@ class ChessApp:
         color_combo.grid(row=0, column=5, padx=5)
         color_combo.bind("<<ComboboxSelected>>", lambda _: self.reset_game())
 
-        ttk.Label(top, text="Profondeur IA :").grid(row=0, column=6, padx=5)
+        ttk.Label(
+            top,
+            text="Profondeur IA (plus haut = réflexion plus longue) :",
+        ).grid(row=0, column=6, padx=5)
         ttk.Spinbox(
             top,
             from_=1,
@@ -92,20 +96,36 @@ class ChessApp:
             width=5,
         ).grid(row=0, column=7, padx=5)
 
-        ttk.Label(top, text="Noeuds max :").grid(row=0, column=8, padx=5)
+        ttk.Label(
+            top,
+            text="Limite de temps IA (ms, pour garder l'interface réactive) :",
+        ).grid(row=0, column=8, padx=5)
         ttk.Spinbox(
             top,
-            from_=100,
+            from_=0,
+            to=10000,
+            increment=100,
+            textvariable=self.ai_time_limit_var,
+            width=8,
+        ).grid(row=0, column=9, padx=5)
+
+        ttk.Label(
+            top,
+            text="Noeuds max (cap dur, réduit la réflexion) :",
+        ).grid(row=0, column=10, padx=5)
+        ttk.Spinbox(
+            top,
+            from_=0,
             to=100000,
             increment=100,
             textvariable=self.ai_nodes_var,
             width=8,
-        ).grid(row=0, column=9, padx=5)
+        ).grid(row=0, column=11, padx=5)
 
         self.status_label = ttk.Label(
             top, textvariable=self.status_var, font=("Arial", 12)
         )
-        self.status_label.grid(row=1, column=0, columnspan=6, pady=5)
+        self.status_label.grid(row=1, column=0, columnspan=12, pady=5)
 
         dark_color = "#b58863"
         self.canvas = tk.Canvas(
@@ -261,11 +281,17 @@ class ChessApp:
         self.draw_board()
         self.root.update_idletasks()
 
+        max_nodes = self.ai_nodes_var.get()
+        max_nodes = max_nodes if max_nodes > 0 else None
+        time_limit_ms = self.ai_time_limit_var.get()
+        time_limit_ms = time_limit_ms if time_limit_ms > 0 else None
+
         move = choose_move(
             self.game.board,
             self.ai_depth_var.get(),
             color=self._ai_color(),
-            max_nodes=self.ai_nodes_var.get(),
+            max_nodes=max_nodes,
+            time_limit_ms=time_limit_ms,
         )
         if move is None:
             self.status_var.set("Aucun coup disponible pour l'IA.")
