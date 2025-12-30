@@ -87,6 +87,30 @@ def _square_label(
     return " ".join(filter(None, ["".join(markers), base, name]))
 
 
+def _rank_label(rank: int) -> str:
+    return str(rank + 1)
+
+
+def _file_label(file_idx: int) -> str:
+    return chr(ord("a") + file_idx).upper()
+
+
+def _render_rank_label(column: st.delta_generator.DeltaGenerator, rank: int) -> None:
+    label = _rank_label(rank)
+    column.markdown(
+        f"<div class='board-label rank-label' aria-label='Rang {label}'>{label}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_file_label(column: st.delta_generator.DeltaGenerator, file_idx: int) -> None:
+    label = _file_label(file_idx)
+    column.markdown(
+        f"<div class='board-label file-label' aria-label='Colonne {label}'>{label}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def _available_moves_from(board: chess.Board, square: str) -> list[chess.Move]:
     parsed_square = chess.parse_square(square)
     return [move for move in board.legal_moves if move.from_square == parsed_square]
@@ -506,7 +530,8 @@ def render_board() -> None:
     )
     with board_container.form("board_form"):
         for rank in reversed(range(8)):
-            cols = st.columns(8, gap="small")
+            cols = st.columns(9, gap="small")
+            _render_rank_label(cols[0], rank)
             for file_idx in range(8):
                 square = chess.square(file_idx, rank)
                 name = chess.square_name(square)
@@ -520,7 +545,7 @@ def render_board() -> None:
                 )
                 is_light = (rank + file_idx) % 2 == 0
                 button_type = "primary" if is_light else "secondary"
-                if cols[file_idx].form_submit_button(
+                if cols[file_idx + 1].form_submit_button(
                     label,
                     key=f"square-{name}",
                     use_container_width=True,
@@ -528,6 +553,13 @@ def render_board() -> None:
                     disabled=game_over,
                 ):
                     on_square_click(name)
+        file_columns = st.columns(9, gap="small")
+        file_columns[0].markdown(
+            "<div class='board-label file-label' aria-label='Coin vide' aria-hidden='true'>&nbsp;</div>",
+            unsafe_allow_html=True,
+        )
+        for file_idx in range(8):
+            _render_file_label(file_columns[file_idx + 1], file_idx)
     board_container.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
