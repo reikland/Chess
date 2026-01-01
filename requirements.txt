@@ -1,1 +1,0 @@
-# Aucun paquet externe requis pour l'application Tkinter.
